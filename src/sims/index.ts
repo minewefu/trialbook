@@ -1,28 +1,26 @@
+import { pendulum } from './pendulum';
+import { predatorPrey } from './predator_prey';
 import { projectile } from './projectile';
 import type { ExperimentDef, ExperimentId } from './types';
 
-/** Every experiment the lab will offer, in display order. Unavailable ones show as "coming soon". */
+/** Every experiment the lab offers, in display order. */
 export const EXPERIMENT_ORDER: { id: ExperimentId; title: string; summary: string }[] = [
   { id: projectile.id, title: projectile.title, summary: projectile.summary },
-  {
-    id: 'pendulum',
-    title: 'Pendulum',
-    summary: 'Length, amplitude, gravity and damping. Measures the period and compares it with the small-angle formula.',
-  },
-  {
-    id: 'predator_prey',
-    title: 'Predator and prey',
-    summary: 'Lotka–Volterra populations. Measures peaks, minimums and the oscillation period.',
-  },
+  { id: pendulum.id, title: pendulum.title, summary: pendulum.summary },
+  { id: predatorPrey.id, title: predatorPrey.title, summary: predatorPrey.summary },
 ];
 
-export const EXPERIMENTS: Partial<Record<ExperimentId, ExperimentDef>> = { projectile };
+export const EXPERIMENTS: Partial<Record<ExperimentId, ExperimentDef>> = {
+  projectile,
+  pendulum,
+  predator_prey: predatorPrey,
+};
 
 export function mustDef(id: ExperimentId): ExperimentDef {
   const def = EXPERIMENTS[id];
   if (!def) {
     throw new Error(
-      `The ${id} experiment is not available yet. Available experiments: ${Object.keys(EXPERIMENTS).join(', ')}.`,
+      `The ${id} experiment is not available. Available experiments: ${Object.keys(EXPERIMENTS).join(', ')}.`,
     );
   }
   return def;

@@ -6,10 +6,22 @@ export function round(n: number, sig = 4): number {
   return Number(n.toFixed(decimals));
 }
 
-export function roundAll<T extends Record<string, number>>(obj: T, sig = 4): T {
-  const out: Record<string, number> = {};
-  for (const [key, value] of Object.entries(obj)) out[key] = round(value, sig);
-  return out as T;
+/** Rounds every value; non-finite values (a measurement that does not apply) become null for the agent. */
+export function roundAll(obj: Record<string, number>, sig = 4): Record<string, number | null> {
+  const out: Record<string, number | null> = {};
+  for (const [key, value] of Object.entries(obj)) out[key] = Number.isFinite(value) ? round(value, sig) : null;
+  return out;
+}
+
+/** Shrinks a row-based result until its JSON fits the output budget. Returns the value and the row count used. */
+export function fitToBudget<T>(build: (rows: number) => T, maxRows: number, budget = 1350, minRows = 1): { value: T; rows: number } {
+  let rows = Math.max(minRows, maxRows);
+  let value = build(rows);
+  while (rows > minRows && JSON.stringify(value).length > budget) {
+    rows -= 1;
+    value = build(rows);
+  }
+  return { value, rows };
 }
 
 export function fmt(n: number, unit = '', sig = 3): string {

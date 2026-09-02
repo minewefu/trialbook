@@ -73,7 +73,7 @@ export function ResultsPanel() {
                   <td className="small">{summarizeParams(def, t.params)}</td>
                   {def.measurements.map((m) => (
                     <td key={m.key} className="mono">
-                      {round(t.measurements[m.key], 4)}
+                      {Number.isFinite(t.measurements[m.key]) ? round(t.measurements[m.key], 4) : 'n/a'}
                     </td>
                   ))}
                   <td>

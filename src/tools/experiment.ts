@@ -1,4 +1,4 @@
-import { clampInt, linspace, round, roundAll } from '../lib/format';
+import { clampInt, fitToBudget, linspace, round, roundAll } from '../lib/format';
 import type { ToolDef } from '../lib/webmcp';
 import { mustDef } from '../sims';
 import { describeParam, formatMeasurements, type ExperimentDef, type ParamSpec } from '../sims/types';
@@ -32,6 +32,17 @@ function paramProperties(def: ExperimentDef): Record<string, unknown> {
   return props;
 }
 
+/** Joins sentences while the result stays within the description limit; trailing parts are dropped first. */
+function compose(parts: string[], limit = 500): string {
+  let out = '';
+  for (const part of parts) {
+    const next = out ? `${out} ${part}` : part;
+    if (next.length > limit) break;
+    out = next;
+  }
+  return out;
+}
+
 /** Builds the four per-experiment tools. Schemas describe `def`; handlers read the open experiment at call time. */
 export function experimentTools(def: ExperimentDef): ToolDef[] {
   const props = paramProperties(def);
@@ -42,9 +53,11 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
   return [
     {
       name: 'set_parameters',
-      description: `Change one or more ${def.title} parameters without running anything. Parameters: ${def.params
-        .map(describeParam)
-        .join('; ')}. The sliders update on screen. ${def.agentGuidance}`,
+      description: compose([
+        `Change ${def.title} parameters without running anything; the sliders update on screen.`,
+        `Parameters: ${def.params.map(describeParam).join('; ')}.`,
+        def.agentGuidance,
+      ]),
       inputSchema: objectSchema(props),
       example: numberSpecs[0] ? { [numberSpecs[0].key]: numberSpecs[0].default } : {},
       execute: async (input: Record<string, unknown>) => {
@@ -62,9 +75,11 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
     },
     {
       name: 'run_trial',
-      description: `Run the ${def.title} experiment once and measure it. Uses the current parameters; any parameter you pass is applied first and stays set. Returns ${def.measurements
-        .map((m) => m.key)
-        .join(', ')}. The person watches the trial on screen.`,
+      description: compose([
+        `Run the ${def.title} experiment once and measure it. Uses the current parameters; any parameter you pass is applied first and stays set.`,
+        `Returns ${def.measurements.map((m) => m.key).join(', ')}.`,
+        'The person watches the trial on screen.',
+      ]),
       inputSchema: objectSchema({
         ...props,
         label: { type: 'string', maxLength: 60, description: 'Optional short label for this trial.' },
@@ -141,10 +156,14 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
         const trials = sweep.trialIds.map((id) => s.trials.find((t) => t.id === id)).filter((t): t is Trial => Boolean(t));
         const summary: Record<string, unknown> = {};
         for (const m of d.measurements) {
-          if (!trials.length) break;
-          let min = trials[0];
-          let max = trials[0];
-          for (const t of trials) {
+          const finite = trials.filter((t) => Number.isFinite(t.measurements[m.key]));
+          if (!finite.length) {
+            summary[m.key] = null;
+            continue;
+          }
+          let min = finite[0];
+          let max = finite[0];
+          for (const t of finite) {
             if (t.measurements[m.key] < min.measurements[m.key]) min = t;
             if (t.measurements[m.key] > max.measurements[m.key]) max = t;
           }
@@ -156,18 +175,20 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
           };
         }
         const rows = trials.map((t) => ({ [spec.key]: t.params[spec.key], ...roundAll(t.measurements, 4) }));
-        return {
+        const build = (n: number) => ({
           sweep_id: sweep.id,
           experiment: d.id,
           parameter: spec.key,
           status: sweep.status,
+          cancelled: sweep.status === 'cancelled',
           ...(sweep.error ? { error: sweep.error } : {}),
           count: trials.length,
           summary,
-          rows: rows.slice(0, MAX_SWEEP_ROWS),
-          ...(rows.length > MAX_SWEEP_ROWS ? { more_rows: `get_results with sweep_id ${sweep.id}` } : {}),
+          rows: rows.slice(0, n),
+          ...(rows.length > n ? { more_rows: `get_results with sweep_id ${sweep.id}` } : {}),
           hint: `Call plot_results with sweep_id "${sweep.id}" and a measurement key to chart it, then notebook_add_entry to record the conclusion.`,
-        };
+        });
+        return fitToBudget(build, Math.min(rows.length, MAX_SWEEP_ROWS), 1350, Math.min(rows.length, 2)).value;
       },
     },
     {

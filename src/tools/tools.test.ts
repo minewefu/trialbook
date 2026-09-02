@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { listTools, runTool } from '../lib/webmcp';
+import { EXPERIMENTS } from '../sims';
 import { useLab } from '../store';
+import { experimentTools } from './experiment';
 import { initTools } from './index';
 
 const MAX = 1400;
@@ -34,11 +36,20 @@ describe('tool registry', () => {
     expect(names.length).toBeLessThanOrEqual(12);
   });
 
-  it('keeps names, descriptions and schemas within the guidance limits', () => {
-    for (const { def } of listTools()) {
+  it('keeps names, descriptions and schemas within the guidance limits for every experiment', () => {
+    const defs = [
+      ...listTools().map((t) => t.def),
+      ...Object.values(EXPERIMENTS).flatMap((experiment) => experimentTools(experiment)),
+    ];
+    expect(defs.length).toBeGreaterThan(12);
+    for (const def of defs) {
       expect(def.name).toMatch(/^[A-Za-z0-9_.-]{1,128}$/);
       expect(def.description.length).toBeLessThanOrEqual(500);
       expect(def.inputSchema).toMatchObject({ type: 'object', additionalProperties: false });
+      const properties = (def.inputSchema as { properties: Record<string, { description?: string }> }).properties;
+      for (const property of Object.values(properties)) {
+        expect((property.description ?? '').length).toBeLessThanOrEqual(150);
+      }
       expect(def.annotations?.readOnlyHint === true || def.annotations?.readOnlyHint === undefined).toBe(true);
     }
   });
@@ -153,10 +164,61 @@ describe('tool behaviour', () => {
     expect(size(r)).toBeLessThan(MAX);
   });
 
-  it('open_experiment refuses experiments that are not built yet', async () => {
-    const r = (await runTool('open_experiment', { experiment: 'pendulum' })) as Result;
+  it('open_experiment swaps the experiment tools and the pendulum measures a real period', async () => {
+    const opened = (await runTool('open_experiment', { experiment: 'pendulum' })) as Result;
+    expect(opened.ok).toBe(true);
+    expect(opened.experiment).toBe('pendulum');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const setTool = listTools().find((t) => t.def.name === 'set_parameters')!;
+    const props = (setTool.def.inputSchema as { properties: Record<string, unknown> }).properties;
+    expect(Object.keys(props)).toContain('length');
+    expect(Object.keys(props)).not.toContain('speed');
+    expect(listTools().length).toBeLessThanOrEqual(12);
+
+    const trial = (await runTool('run_trial', { amplitude: 20, length: 1 })) as Result;
+    expect(trial.experiment).toBe('pendulum');
+    expect(trial.measurements.period_s).toBeCloseTo(2.022, 2);
+    expect(trial.measurements.small_angle_period_s).toBeCloseTo(2.006, 2);
+    expect(trial.measurements.decay_time_s).toBeNull();
+    expect(size(trial)).toBeLessThan(MAX);
+
+    const wrong = (await runTool('set_parameters', { speed: 30 })) as Result;
+    expect(wrong.ok).toBe(false);
+    expect(wrong.error).toMatch(/Unknown parameter "speed"/);
+
+    const sweep = (await runTool('sweep_parameter', { parameter: 'damping', watch: false })) as Result;
+    expect(sweep.count).toBe(3);
+    expect(sweep.summary.decay_time_s.min_at).toBe('heavy');
+    expect(size(sweep)).toBeLessThan(MAX);
+
+    const back = (await runTool('open_experiment', { experiment: 'projectile' })) as Result;
+    expect(back.experiment).toBe('projectile');
+  });
+
+  it('open_experiment refuses experiments that do not exist and keeps the current one open', async () => {
+    useLab.getState().openExperiment('projectile', 'you');
+    const r = (await runTool('open_experiment', { experiment: 'quantum' })) as Result;
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/not available yet/);
+    expect(r.error).toMatch(/not available/);
     expect(useLab.getState().experiment).toBe('projectile');
+  });
+
+  it('predator and prey tools produce many measurements and still fit the output budget', async () => {
+    const opened = (await runTool('open_experiment', { experiment: 'predator_prey' })) as Result;
+    expect(opened.ok).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const trial = (await runTool('run_trial', {})) as Result;
+    expect(trial.measurements.peak_prey).toBeGreaterThan(trial.measurements.min_prey);
+    expect(size(trial)).toBeLessThan(MAX);
+    const sweep = (await runTool('sweep_parameter', { parameter: 'predator_death', from: 0.3, to: 1.2, steps: 10, watch: false })) as Result;
+    expect(sweep.count).toBe(10);
+    expect(size(sweep)).toBeLessThan(MAX);
+    const results = (await runTool('get_results', { limit: 6 })) as Result;
+    expect(results.rows.length).toBeGreaterThan(0);
+    expect(results.per_page).toBeLessThanOrEqual(6);
+    expect(size(results)).toBeLessThan(MAX);
+    const chart = (await runTool('plot_results', { sweep_id: sweep.sweep_id, y: 'oscillation_period' })) as Result;
+    expect(chart.points).toBe(10);
+    useLab.getState().openExperiment('projectile', 'you');
   });
 });

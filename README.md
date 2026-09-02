@@ -11,8 +11,17 @@ attributed and editable.
 Built for the [OpenAI WebMCP Challenge](https://webmcp.devpost.com/) (August 25 to September 3, 2026).
 All code in this repository was written during the submission period.
 
-> **Status: milestone 1 of 5.** The WebMCP layer, the in-app Tools panel and the first tool
-> (`get_lab_state`) are live. Experiments, sweeps, charts and the notebook come next.
+> **Status: milestone 3 of 5.** Three experiments are live (projectile motion, pendulum, predator and prey),
+> each with tested physics, an animated stage, sweeps with progress and cancellation, charts, and the shared
+> notebook. Polish, a walkthrough and the demo video come next.
+
+## Experiments
+
+| Experiment | What you vary | What gets measured | Engine |
+|---|---|---|---|
+| Projectile motion | speed, angle, launch height, gravity, air drag | range, flight time, max height, impact speed | closed form without drag; semi-implicit Euler with quadratic drag, tested against the closed form within 0.5% |
+| Pendulum | length, release angle, gravity, damping | period, small-angle period, deviation, peak speed, decay time | RK4 on the full nonlinear equation, tested against the exact elliptic-integral period within 0.5% |
+| Predator and prey | growth, predation, efficiency, death rate, starting numbers, duration | population extremes, cycle length, time averages | RK4 on Lotka–Volterra, tested for conservation of the invariant and the time-average theorem |
 
 **Live app:** https://minewefu.github.io/trialbook/
 

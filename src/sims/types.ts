@@ -57,7 +57,7 @@ export function defaultParams(def: ExperimentDef): Params {
 
 export function describeParam(spec: ParamSpec): string {
   return spec.kind === 'number'
-    ? `${spec.key} (${spec.unit || 'number'}, ${spec.min} to ${spec.max})`
+    ? `${spec.key} (${spec.min} to ${spec.max}${spec.unit ? ' ' + spec.unit : ''})`
     : `${spec.key} (one of ${spec.options.join(', ')})`;
 }
 
@@ -101,7 +101,11 @@ export function validatePatch(
 export function formatMeasurements(def: ExperimentDef, m: Measurements): string {
   return def.measurements
     .filter((spec) => m[spec.key] !== undefined)
-    .map((spec) => `${spec.label.toLowerCase()} ${round(m[spec.key], 3)} ${spec.unit}`.trim())
+    .map((spec) =>
+      Number.isFinite(m[spec.key])
+        ? `${spec.label.toLowerCase()} ${round(m[spec.key], 3)} ${spec.unit}`.trim()
+        : `${spec.label.toLowerCase()} n/a`,
+    )
     .join(', ');
 }
 

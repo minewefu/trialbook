@@ -1,4 +1,4 @@
-import { clampInt, clip, isoTime, round, roundAll } from '../lib/format';
+import { clampInt, clip, fitToBudget, isoTime, round, roundAll } from '../lib/format';
 import { buildReport, downloadText } from '../lib/report';
 import { registerTool, type ToolDef } from '../lib/webmcp';
 import { EXPERIMENTS, EXPERIMENT_ORDER, mustDef } from '../sims';
@@ -170,27 +170,33 @@ export const GLOBAL_TOOLS: ToolDef[] = [
         rows = [...s.trials].filter((t) => t.experiment === s.experiment).reverse();
       }
       // Sweep rows carry one parameter, so more of them fit under the output limit than full trial rows do.
-      const limit = clampInt(input.limit, 1, sweep ? 8 : 6, 6);
-      const page = clampInt(input.page, 1, 1_000_000, 1);
-      const pages = Math.max(1, Math.ceil(rows.length / limit));
-      const slice = rows.slice((page - 1) * limit, page * limit);
+      const requested = clampInt(input.limit, 1, sweep ? 8 : 6, 6);
+      const requestedPage = clampInt(input.page, 1, 1_000_000, 1);
       const swept = sweep?.parameter;
-      return {
-        total: rows.length,
-        page,
-        pages,
-        ...(sweep
-          ? { sweep_id: sweep.id, by: sweep.actor, swept_parameter: swept, status: sweep.status, fixed_parameters: fixed }
-          : {}),
-        rows: slice.map((t) => ({
-          id: t.id,
-          ...(swept ? {} : { by: t.actor }),
-          ...(t.label ? { label: t.label } : {}),
-          ...(swept ? { [swept]: t.params[swept] } : roundParams(t.params)),
-          ...roundAll(t.measurements, 4),
-        })),
-        ...(page < pages ? { hint: `Call again with page ${page + 1} for more.` } : {}),
+      const build = (limit: number) => {
+        const pages = Math.max(1, Math.ceil(rows.length / limit));
+        const page = Math.min(requestedPage, pages);
+        const slice = rows.slice((page - 1) * limit, page * limit);
+        return {
+          total: rows.length,
+          page,
+          pages,
+          per_page: limit,
+          ...(sweep
+            ? { sweep_id: sweep.id, by: sweep.actor, swept_parameter: swept, status: sweep.status, fixed_parameters: fixed }
+            : {}),
+          rows: slice.map((t) => ({
+            id: t.id,
+            ...(swept ? {} : { by: t.actor }),
+            ...(t.label ? { label: t.label } : {}),
+            ...(swept ? { [swept]: t.params[swept] } : roundParams(t.params)),
+            ...roundAll(t.measurements, 4),
+          })),
+          ...(page < pages ? { hint: `Call again with page ${page + 1} and limit ${limit} for more.` } : {}),
+        };
       };
+      // Experiments with many measurements get fewer rows per page so the output stays under the budget.
+      return fitToBudget(build, requested).value;
     },
   },
   {
@@ -259,6 +265,8 @@ export const GLOBAL_TOOLS: ToolDef[] = [
           );
         }
       }
+      const usable = points.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+      if (!usable.length) throw new Error(`None of those trials has a finite value of ${input.y} to plot.`);
       const yLabel = `${ySpec.label} (${ySpec.unit})`;
       const title = clip(String(input.title ?? `${ySpec.label} vs ${xLabel}`), 80);
       const chart = s.addChart({
@@ -268,19 +276,20 @@ export const GLOBAL_TOOLS: ToolDef[] = [
         xLabel,
         yKey: input.y,
         yLabel,
-        points,
+        points: usable,
         ...(sweep ? { sweepId: sweep.id } : {}),
         actor: 'agent',
       });
-      const yMax = points.reduce((best, p) => (p.y > best.y ? p : best), points[0]);
-      const yMin = points.reduce((best, p) => (p.y < best.y ? p : best), points[0]);
+      const yMax = usable.reduce((best, p) => (p.y > best.y ? p : best), usable[0]);
+      const yMin = usable.reduce((best, p) => (p.y < best.y ? p : best), usable[0]);
       const describe = (p: ChartPoint) => ({ x: round(p.x, 4), ...(p.label ? { label: p.label } : {}), y: round(p.y, 4) });
       return {
         chart_id: chart.id,
         title,
         x: xKey,
         y: input.y,
-        points: points.length,
+        points: usable.length,
+        ...(usable.length < points.length ? { skipped: points.length - usable.length } : {}),
         y_max: describe(yMax),
         y_min: describe(yMin),
         hint: 'The chart is now visible in the Results panel. Consider a notebook_add_entry with your conclusion.',

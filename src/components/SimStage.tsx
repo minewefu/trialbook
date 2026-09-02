@@ -1,5 +1,5 @@
 import { EXPERIMENTS } from '../sims';
-import { ProjectileStage } from '../sims/projectile/Stage';
+import { STAGES } from '../sims/stages';
 import { formatMeasurements } from '../sims/types';
 import { useLab } from '../store';
 
@@ -17,7 +17,8 @@ export function SimStage() {
   const cancelSweep = useLab((s) => s.cancelSweep);
 
   const def = experiment ? EXPERIMENTS[experiment] : undefined;
-  if (!def || !experiment) {
+  const Stage = experiment ? STAGES[experiment] : undefined;
+  if (!def || !experiment || !Stage) {
     return (
       <section className="card">
         <p className="muted">Pick an experiment to begin.</p>
@@ -50,9 +51,7 @@ export function SimStage() {
         </div>
       </header>
       <div className="stage-host">
-        {experiment === 'projectile' && (
-          <ProjectileStage trial={trial} ghosts={ghosts} watch={watch} replayNonce={replayNonce} />
-        )}
+        <Stage trial={trial} ghosts={ghosts} watch={watch} replayNonce={replayNonce} />
       </div>
       {activeSweepId && progress && (
         <div className="sweep-bar">
