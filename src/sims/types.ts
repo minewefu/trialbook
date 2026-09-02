@@ -109,8 +109,9 @@ export function formatMeasurements(def: ExperimentDef, m: Measurements): string 
     .join(', ');
 }
 
-export function summarizeParams(def: ExperimentDef, params: Params): string {
+export function summarizeParams(def: ExperimentDef, params: Params, exclude?: string): string {
   return def.params
+    .filter((spec) => spec.key !== exclude)
     .map((spec) =>
       spec.kind === 'number'
         ? `${spec.label.toLowerCase()} ${params[spec.key]} ${spec.unit}`.trim()

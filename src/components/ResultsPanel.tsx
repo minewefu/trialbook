@@ -61,7 +61,10 @@ export function ResultsPanel() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((t) => (
+              {rows.map((t) => {
+                const sweep = t.sweepId ? sweeps.find((w) => w.id === t.sweepId) : undefined;
+                const swept = sweep ? def.params.find((p) => p.key === sweep.parameter) : undefined;
+                return (
                 <tr key={t.id} className={t.id === currentTrialId ? 'current' : ''}>
                   <td className="mono">
                     {t.id}
@@ -70,7 +73,19 @@ export function ResultsPanel() {
                   <td>
                     <span className={`badge ${t.actor === 'agent' ? 'badge-agent' : 'badge-you'}`}>{t.actor}</span>
                   </td>
-                  <td className="small">{summarizeParams(def, t.params)}</td>
+                  <td className="small">
+                    {swept ? (
+                      <>
+                        <strong>
+                          {swept.label.toLowerCase()} {t.params[swept.key]}
+                          {swept.kind === 'number' && swept.unit ? ` ${swept.unit}` : ''}
+                        </strong>
+                        <span className="muted"> · {summarizeParams(def, t.params, swept.key)}</span>
+                      </>
+                    ) : (
+                      summarizeParams(def, t.params)
+                    )}
+                  </td>
                   {def.measurements.map((m) => (
                     <td key={m.key} className="mono">
                       {Number.isFinite(t.measurements[m.key]) ? round(t.measurements[m.key], 4) : 'n/a'}
@@ -82,7 +97,8 @@ export function ResultsPanel() {
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

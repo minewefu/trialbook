@@ -26,6 +26,10 @@ All code in this repository was written during the submission period.
 
 **Live app:** https://minewefu.github.io/trialbook/
 
+Verified end to end in ChatGPT's built-in browser (GPT-5.6 Sol, Windows desktop app) and in Chrome 151 with
+the WebMCP flags: sweeps, charts, notebook entries, the change feed, and the experiment tool swap all work
+from a plain conversation.
+
 ## Try it with an agent
 
 ### ChatGPT desktop app (no setup)

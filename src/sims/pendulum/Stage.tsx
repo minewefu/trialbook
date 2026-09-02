@@ -29,8 +29,11 @@ export function PendulumStage({ trial, ghosts, watch, replayNonce }: StageProps)
     const leftW = Math.min(w * 0.42, h - top);
     const left = { x: pad, y: top, w: leftW - pad, h: h - top - pad };
     const right = { x: leftW + 16, y: top + 8, w: w - leftW - 16 - pad, h: h - top - 8 - 40 };
-    const pivot = { x: left.x + left.w / 2, y: left.y + 14 };
-    const rodFor = (length: number) => Math.min(left.h - 36, left.w / 2 - 8) * (length / maxLength);
+    // Past 90 degrees the bob swings above the pivot, so the pivot moves to the centre to fit a full circle.
+    const wide = maxAmplitude > 90;
+    const pivot = { x: left.x + left.w / 2, y: wide ? left.y + left.h / 2 : left.y + 14 };
+    const rodMax = wide ? Math.min(left.h / 2 - 16, left.w / 2 - 8) : Math.min(left.h - 36, left.w / 2 - 8);
+    const rodFor = (length: number) => rodMax * (length / maxLength);
 
     const drawPendulum = (t: typeof trial, alpha: number, width: number) => {
       const R = rodFor(Number(t.params.length) || 1);
@@ -117,7 +120,7 @@ export function PendulumStage({ trial, ghosts, watch, replayNonce }: StageProps)
       ctx.stroke();
       ctx.restore();
     };
-    for (const g of ghosts) drawSeries(g, 0.25, Infinity, 1.2);
+    for (const g of ghosts.slice(-8)) drawSeries(g, 0.14, Infinity, 1);
     drawSeries(trial, 0.3, Infinity, 1);
     drawSeries(trial, 1, tNow, 2);
     ctx.strokeStyle = c.muted;
