@@ -192,6 +192,75 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
       },
     },
     {
+      name: 'optimize_parameter',
+      description: `Search for the value of one ${def.title} parameter that maximises or minimises a measurement, using golden-section search over a range (about 20 trials for 1% of the range). Assumes a single peak or valley; run a coarse sweep_parameter first if unsure. Recorded as a sweep so plot_results can show every point tried.`,
+      inputSchema: objectSchema(
+        {
+          parameter: { type: 'string', enum: numberSpecs.map((p) => p.key), description: 'Numeric parameter to search.' },
+          measurement: { type: 'string', enum: def.measurements.map((m) => m.key), description: 'Measurement to optimise.' },
+          goal: { type: 'string', enum: ['max', 'min'], description: 'Maximise or minimise the measurement.' },
+          from: { type: 'number', description: 'Lower end of the search range. Default: the parameter minimum.' },
+          to: { type: 'number', description: 'Upper end of the search range. Default: the parameter maximum.' },
+          tolerance: { type: 'number', description: 'Stop when the bracket is this narrow. Default: 1% of the range.' },
+          max_trials: { type: 'integer', minimum: 4, maximum: 30, description: 'Trial budget, 4 to 30. Default 20.' },
+          watch: { type: 'boolean', description: 'Pause briefly after each trial so the person can watch. Default true.' },
+        },
+        ['parameter', 'measurement', 'goal'],
+      ),
+      example: numberSpecs[1]
+        ? { parameter: numberSpecs[1].key, measurement: def.measurements[0].key, goal: 'max', tolerance: 0.1 }
+        : { parameter: numberSpecs[0]?.key ?? '', measurement: def.measurements[0].key, goal: 'max' },
+      execute: async (
+        input: { parameter: string; measurement: string; goal: 'max' | 'min'; from?: number; to?: number; tolerance?: number; max_trials?: number; watch?: boolean },
+        opts?: { signal?: AbortSignal },
+      ) => {
+        const d = activeDef();
+        if (input.goal !== 'max' && input.goal !== 'min') throw new Error('goal must be "max" or "min".');
+        const result = await useLab.getState().runOptimization(
+          d.id,
+          input.parameter,
+          {
+            measurement: input.measurement,
+            goal: input.goal,
+            ...(input.from !== undefined ? { from: Number(input.from) } : {}),
+            ...(input.to !== undefined ? { to: Number(input.to) } : {}),
+            ...(input.tolerance !== undefined ? { tolerance: Number(input.tolerance) } : {}),
+            ...(input.max_trials !== undefined ? { maxTrials: Number(input.max_trials) } : {}),
+            watch: input.watch !== false,
+            signal: opts?.signal,
+          },
+          'agent',
+        );
+        const spec = d.params.find((p) => p.key === input.parameter);
+        const unit = spec?.kind === 'number' ? spec.unit : '';
+        return {
+          sweep_id: result.sweep.id,
+          experiment: d.id,
+          parameter: input.parameter,
+          measurement: input.measurement,
+          goal: input.goal,
+          status: result.sweep.status,
+          cancelled: result.sweep.status === 'cancelled',
+          best: result.best
+            ? {
+                [input.parameter]: result.best.params[input.parameter],
+                unit,
+                [input.measurement]: round(result.best.measurements[input.measurement], 5),
+                trial_id: result.best.id,
+              }
+            : null,
+          bracket: [round(result.bracket[0], 5), round(result.bracket[1], 5)],
+          bracket_width: round(result.bracket[1] - result.bracket[0], 5),
+          tolerance: round(result.tolerance, 5),
+          trials_used: result.trialsUsed,
+          converged: result.converged,
+          ...(result.atBound ? { at_bound: result.atBound, note: `The best value sits at the ${result.atBound} end of the range, so the true optimum may lie outside it or the response is monotonic.` } : {}),
+          caveat: 'Golden-section search assumes one peak or valley in the range.',
+          hint: `plot_results with sweep_id "${result.sweep.id}" shows every point tried; record the optimum with notebook_add_entry.`,
+        };
+      },
+    },
+    {
       name: 'reset_experiment',
       description: `Reset every ${def.title} parameter to its default value. Trials, charts and notebook entries are kept.`,
       inputSchema: objectSchema({}),

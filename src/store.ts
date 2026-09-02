@@ -30,6 +30,7 @@ export type Trial = {
 };
 
 export type SweepStatus = 'running' | 'done' | 'cancelled' | 'failed';
+export type SweepKind = 'sweep' | 'optimize' | 'repeats';
 
 export type Sweep = {
   id: string;
@@ -40,11 +41,44 @@ export type Sweep = {
   actor: Actor;
   ts: number;
   status: SweepStatus;
+  kind?: SweepKind;
   label?: string;
   error?: string;
 };
 
-export type ChartPoint = { x: number; y: number; label?: string; trialId?: string };
+export type OptimizeOptions = {
+  measurement: string;
+  goal: 'max' | 'min';
+  from?: number;
+  to?: number;
+  tolerance?: number;
+  maxTrials?: number;
+  watch?: boolean;
+  signal?: AbortSignal;
+  label?: string;
+};
+
+export type OptimizeResult = {
+  sweep: Sweep;
+  best: Trial | null;
+  bracket: [number, number];
+  tolerance: number;
+  trialsUsed: number;
+  converged: boolean;
+  atBound: 'low' | 'high' | null;
+};
+
+export type ChartPoint = { x: number; y: number; label?: string; trialId?: string; sd?: number; n?: number };
+
+/** A fitted model drawn over a chart's points. */
+export type ChartFit = {
+  model: 'linear' | 'quadratic' | 'power' | 'exponential';
+  params: Record<string, number>;
+  equation: string;
+  r2: number;
+  rmse: number;
+  n: number;
+};
 
 export type Chart = {
   id: string;
@@ -56,6 +90,7 @@ export type Chart = {
   yLabel: string;
   points: ChartPoint[];
   sweepId?: string;
+  fit?: ChartFit;
   actor: Actor;
   ts: number;
 };
@@ -116,6 +151,7 @@ type LabActions = {
   resetParams: (id: ExperimentId, actor: Actor) => Params;
   runTrial: (id: ExperimentId, actor: Actor, overrides?: Record<string, unknown>, label?: string) => Trial;
   runSweep: (id: ExperimentId, parameter: string, values: unknown[], actor: Actor, opts?: SweepOptions) => Promise<Sweep>;
+  runOptimization: (id: ExperimentId, parameter: string, opts: OptimizeOptions, actor: Actor) => Promise<OptimizeResult>;
   cancelSweep: () => boolean;
   showTrial: (trialId: string | null) => void;
   replay: () => void;
@@ -131,6 +167,7 @@ type LabActions = {
   updateNote: (id: string, text: string) => void;
   deleteNote: (id: string, actor: Actor) => void;
   addChart: (chart: Omit<Chart, 'id' | 'ts'>) => Chart;
+  setChartFit: (id: string, fit: ChartFit, actor: Actor) => void;
   removeChart: (id: string, actor: Actor) => void;
   recordChange: (actor: Actor, text: string, key?: string) => void;
   takeChanges: () => Change[];
@@ -349,6 +386,118 @@ export const useLab = create<LabStore>()(
           return finished;
         },
 
+        runOptimization: async (id, parameter, opts, actor) => {
+          const def = mustDef(id);
+          const spec = def.params.find((p) => p.key === parameter);
+          if (!spec) throw new Error(`Unknown parameter "${parameter}". Valid parameters: ${def.params.map((p) => p.key).join(', ')}.`);
+          if (spec.kind !== 'number') {
+            throw new Error(`${parameter} is a choice (${spec.options.join(', ')}), not a number. Use sweep_parameter to compare its options.`);
+          }
+          const mSpec = def.measurements.find((m) => m.key === opts.measurement);
+          if (!mSpec) throw new Error(`measurement must be one of ${def.measurements.map((m) => m.key).join(', ')}.`);
+          const lo0 = opts.from ?? spec.min;
+          const hi0 = opts.to ?? spec.max;
+          if (!Number.isFinite(lo0) || !Number.isFinite(hi0) || lo0 < spec.min || hi0 > spec.max || lo0 >= hi0) {
+            throw new Error(`from and to must satisfy ${spec.min} <= from < to <= ${spec.max} for ${parameter}.`);
+          }
+          const tolerance = Math.max((hi0 - lo0) / 1e6, opts.tolerance ?? (hi0 - lo0) / 100);
+          const maxTrials = Math.min(30, Math.max(4, Math.round(opts.maxTrials ?? 20)));
+          if (get().activeSweepId) throw new Error('Another sweep is still running. Wait for it to finish or cancel it first.');
+
+          const controller = new AbortController();
+          sweepController = controller;
+          opts.signal?.addEventListener('abort', () => controller.abort(), { once: true });
+          const sweepId = nextId('sweep');
+          const base = get().paramsFor(id);
+          const sweep: Sweep = {
+            id: sweepId,
+            experiment: id,
+            parameter,
+            values: [],
+            trialIds: [],
+            actor,
+            ts: Date.now(),
+            status: 'running',
+            kind: 'optimize',
+            label: clip(opts.label ?? `${opts.goal === 'max' ? 'maximise' : 'minimise'} ${opts.measurement}`, 60),
+          };
+          set((s) => ({ sweeps: [...s.sweeps, sweep], activeSweepId: sweepId, sweepProgress: { done: 0, total: maxTrials } }));
+          announce(actor, `started ${sweepId}: searching ${parameter} to ${opts.goal === 'max' ? 'maximise' : 'minimise'} ${opts.measurement}`);
+
+          const pause = opts.watch === false ? 0 : 150;
+          const evaluated: Trial[] = [];
+          const evaluate = async (x: number): Promise<Trial> => {
+            const value = Number(x.toPrecision(8));
+            const trial = createTrial(id, { ...base, [parameter]: value }, actor, undefined, sweepId);
+            evaluated.push(trial);
+            set((s) => ({
+              sweeps: s.sweeps.map((w) => (w.id === sweepId ? { ...w, values: [...w.values, value], trialIds: [...w.trialIds, trial.id] } : w)),
+              sweepProgress: { done: evaluated.length, total: maxTrials },
+            }));
+            if (pause) await sleep(pause);
+            else if (evaluated.length % 4 === 0) await sleep(0);
+            return trial;
+          };
+          const score = (t: Trial) => {
+            const v = t.measurements[opts.measurement];
+            if (!Number.isFinite(v)) return Number.NEGATIVE_INFINITY;
+            return opts.goal === 'max' ? v : -v;
+          };
+
+          let lo = lo0;
+          let hi = hi0;
+          let status: SweepStatus = 'done';
+          let error: string | undefined;
+          try {
+            const phi = (Math.sqrt(5) - 1) / 2;
+            await evaluate(lo);
+            await evaluate(hi);
+            let c = hi - phi * (hi - lo);
+            let d = lo + phi * (hi - lo);
+            let tc = await evaluate(c);
+            let td = await evaluate(d);
+            while (hi - lo > tolerance && evaluated.length < maxTrials) {
+              if (controller.signal.aborted) {
+                status = 'cancelled';
+                break;
+              }
+              if (score(tc) > score(td)) {
+                hi = d;
+                d = c;
+                td = tc;
+                c = hi - phi * (hi - lo);
+                tc = await evaluate(c);
+              } else {
+                lo = c;
+                c = d;
+                tc = td;
+                d = lo + phi * (hi - lo);
+                td = await evaluate(d);
+              }
+            }
+          } catch (err) {
+            status = 'failed';
+            error = err instanceof Error ? err.message : String(err);
+          }
+          set((s) => ({
+            sweeps: s.sweeps.map((w) => (w.id === sweepId ? { ...w, status, ...(error ? { error } : {}) } : w)),
+            activeSweepId: null,
+            sweepProgress: null,
+          }));
+          sweepController = null;
+
+          let best: Trial | null = null;
+          for (const t of evaluated) if (!best || score(t) > score(best)) best = t;
+          const bestX = best ? Number(best.params[parameter]) : Number.NaN;
+          const atBound = !best ? null : bestX - lo0 <= tolerance ? 'low' : hi0 - bestX <= tolerance ? 'high' : null;
+          const finished = get().sweeps.find((w) => w.id === sweepId)!;
+          announce(
+            actor,
+            `${status === 'done' ? 'finished' : status} ${sweepId} after ${evaluated.length} trials${best ? `: best ${parameter} ${bestX}` : ''}`,
+          );
+          return { sweep: finished, best, bracket: [lo, hi], tolerance, trialsUsed: evaluated.length, converged: hi - lo <= tolerance, atBound };
+        },
+
         cancelSweep: () => {
           if (!sweepController) return false;
           sweepController.abort();
@@ -396,6 +545,11 @@ export const useLab = create<LabStore>()(
           set((s) => ({ charts: [...s.charts, full] }));
           announce(chart.actor, `plotted "${chart.title}"`);
           return full;
+        },
+
+        setChartFit: (id, fit, actor) => {
+          set((s) => ({ charts: s.charts.map((c) => (c.id === id ? { ...c, fit } : c)) }));
+          announce(actor, `fitted ${fit.equation} to ${id}`);
         },
 
         removeChart: (id, actor) => {

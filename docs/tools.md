@@ -7,7 +7,7 @@ Lab-wide tools are always registered. Experiment tools are registered when an ex
 replaced when another one opens; their schemas describe that experiment, and their handlers always act
 on whichever experiment is open. Outputs are kept under about 1.4K characters; larger sets are paged.
 
-## Lab-wide tools (8)
+## Lab-wide tools (9)
 
 ### `get_lab_state`
 
@@ -116,7 +116,7 @@ Read stored trials with their parameters and measurements. Pass a sweep_id to ge
 
 *makes changes*
 
-Add a chart to the Results panel. y is a measurement key; x defaults to the swept parameter (for a sweep) or the trial number. Pass a sweep_id or trial_ids, or nothing to plot the latest sweep of the open experiment. Returns the chart id with the minimum and maximum points.
+Add a chart to the Results panel. y is a measurement key; x defaults to the swept parameter (for a sweep) or the trial number. Pass a sweep_id or trial_ids, or nothing to plot the latest sweep of the open experiment. Repeated trials at the same x become one point with error bars. Returns the chart id with the minimum and maximum points.
 
 ```json
 {
@@ -150,6 +150,56 @@ Add a chart to the Results panel. y is a measurement key; x defaults to the swep
   "required": [
     "y"
   ],
+  "additionalProperties": false
+}
+```
+
+### `fit_model`
+
+*makes changes*
+
+Fit a model to sweep results and draw it over the chart: linear, quadratic, power law (y = A·x^p) or exponential, or auto to pick the best. Pass a chart_id to fit an existing chart, or a sweep_id or trial_ids with x and y to build one. Returns the equation with the real variable names, R², RMSE, the largest residual and a plain-language reading.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "chart_id": {
+      "type": "string",
+      "description": "Fit the points of an existing chart, such as chart-2."
+    },
+    "sweep_id": {
+      "type": "string",
+      "description": "Sweep to fit, such as sweep-3, when no chart exists yet."
+    },
+    "trial_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 50,
+      "description": "Specific trials to fit."
+    },
+    "x": {
+      "type": "string",
+      "description": "Parameter or measurement key for x. Defaults to the swept parameter."
+    },
+    "y": {
+      "type": "string",
+      "description": "Measurement key for y. Required unless chart_id is given."
+    },
+    "model": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "linear",
+        "quadratic",
+        "power",
+        "exponential"
+      ],
+      "description": "Which model to fit. Default auto."
+    }
+  },
   "additionalProperties": false
 }
 ```
@@ -253,7 +303,7 @@ Build a Markdown lab report from all trials, sweeps, charts and notebook entries
 }
 ```
 
-## Projectile motion tools (4)
+## Projectile motion tools (5)
 
 Launch a ball and measure where it lands. Vary speed, angle, launch height, gravity and air drag.
 
@@ -421,6 +471,76 @@ Run a series of Projectile motion trials while one parameter changes and the oth
 }
 ```
 
+### `optimize_parameter`
+
+*makes changes*
+
+Search for the value of one Projectile motion parameter that maximises or minimises a measurement, using golden-section search over a range (about 20 trials for 1% of the range). Assumes a single peak or valley; run a coarse sweep_parameter first if unsure. Recorded as a sweep so plot_results can show every point tried.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "parameter": {
+      "type": "string",
+      "enum": [
+        "speed",
+        "angle",
+        "height",
+        "gravity"
+      ],
+      "description": "Numeric parameter to search."
+    },
+    "measurement": {
+      "type": "string",
+      "enum": [
+        "range_m",
+        "flight_time_s",
+        "max_height_m",
+        "impact_speed_mps"
+      ],
+      "description": "Measurement to optimise."
+    },
+    "goal": {
+      "type": "string",
+      "enum": [
+        "max",
+        "min"
+      ],
+      "description": "Maximise or minimise the measurement."
+    },
+    "from": {
+      "type": "number",
+      "description": "Lower end of the search range. Default: the parameter minimum."
+    },
+    "to": {
+      "type": "number",
+      "description": "Upper end of the search range. Default: the parameter maximum."
+    },
+    "tolerance": {
+      "type": "number",
+      "description": "Stop when the bracket is this narrow. Default: 1% of the range."
+    },
+    "max_trials": {
+      "type": "integer",
+      "minimum": 4,
+      "maximum": 30,
+      "description": "Trial budget, 4 to 30. Default 20."
+    },
+    "watch": {
+      "type": "boolean",
+      "description": "Pause briefly after each trial so the person can watch. Default true."
+    }
+  },
+  "required": [
+    "parameter",
+    "measurement",
+    "goal"
+  ],
+  "additionalProperties": false
+}
+```
+
 ### `reset_experiment`
 
 *makes changes*
@@ -435,7 +555,7 @@ Reset every Projectile motion parameter to its default value. Trials, charts and
 }
 ```
 
-## Pendulum tools (4)
+## Pendulum tools (5)
 
 Release a pendulum and time its swing. Vary length, amplitude, gravity and damping, and compare with the small-angle formula.
 
@@ -590,6 +710,76 @@ Run a series of Pendulum trials while one parameter changes and the others stay 
 }
 ```
 
+### `optimize_parameter`
+
+*makes changes*
+
+Search for the value of one Pendulum parameter that maximises or minimises a measurement, using golden-section search over a range (about 20 trials for 1% of the range). Assumes a single peak or valley; run a coarse sweep_parameter first if unsure. Recorded as a sweep so plot_results can show every point tried.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "parameter": {
+      "type": "string",
+      "enum": [
+        "length",
+        "amplitude",
+        "gravity"
+      ],
+      "description": "Numeric parameter to search."
+    },
+    "measurement": {
+      "type": "string",
+      "enum": [
+        "period_s",
+        "small_angle_period_s",
+        "period_deviation_pct",
+        "max_speed_mps",
+        "decay_time_s"
+      ],
+      "description": "Measurement to optimise."
+    },
+    "goal": {
+      "type": "string",
+      "enum": [
+        "max",
+        "min"
+      ],
+      "description": "Maximise or minimise the measurement."
+    },
+    "from": {
+      "type": "number",
+      "description": "Lower end of the search range. Default: the parameter minimum."
+    },
+    "to": {
+      "type": "number",
+      "description": "Upper end of the search range. Default: the parameter maximum."
+    },
+    "tolerance": {
+      "type": "number",
+      "description": "Stop when the bracket is this narrow. Default: 1% of the range."
+    },
+    "max_trials": {
+      "type": "integer",
+      "minimum": 4,
+      "maximum": 30,
+      "description": "Trial budget, 4 to 30. Default 20."
+    },
+    "watch": {
+      "type": "boolean",
+      "description": "Pause briefly after each trial so the person can watch. Default true."
+    }
+  },
+  "required": [
+    "parameter",
+    "measurement",
+    "goal"
+  ],
+  "additionalProperties": false
+}
+```
+
 ### `reset_experiment`
 
 *makes changes*
@@ -604,7 +794,7 @@ Reset every Pendulum parameter to its default value. Trials, charts and notebook
 }
 ```
 
-## Predator and prey tools (4)
+## Predator and prey tools (5)
 
 Watch two populations chase each other through the Lotka–Volterra cycle. Vary growth, predation, efficiency, death rate and the starting numbers.
 
@@ -787,6 +977,82 @@ Run a series of Predator and prey trials while one parameter changes and the oth
   },
   "required": [
     "parameter"
+  ],
+  "additionalProperties": false
+}
+```
+
+### `optimize_parameter`
+
+*makes changes*
+
+Search for the value of one Predator and prey parameter that maximises or minimises a measurement, using golden-section search over a range (about 20 trials for 1% of the range). Assumes a single peak or valley; run a coarse sweep_parameter first if unsure. Recorded as a sweep so plot_results can show every point tried.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "parameter": {
+      "type": "string",
+      "enum": [
+        "prey_growth",
+        "predation",
+        "predator_efficiency",
+        "predator_death",
+        "initial_prey",
+        "initial_predators",
+        "duration"
+      ],
+      "description": "Numeric parameter to search."
+    },
+    "measurement": {
+      "type": "string",
+      "enum": [
+        "peak_prey",
+        "min_prey",
+        "peak_predators",
+        "min_predators",
+        "oscillation_period",
+        "mean_prey",
+        "mean_predators"
+      ],
+      "description": "Measurement to optimise."
+    },
+    "goal": {
+      "type": "string",
+      "enum": [
+        "max",
+        "min"
+      ],
+      "description": "Maximise or minimise the measurement."
+    },
+    "from": {
+      "type": "number",
+      "description": "Lower end of the search range. Default: the parameter minimum."
+    },
+    "to": {
+      "type": "number",
+      "description": "Upper end of the search range. Default: the parameter maximum."
+    },
+    "tolerance": {
+      "type": "number",
+      "description": "Stop when the bracket is this narrow. Default: 1% of the range."
+    },
+    "max_trials": {
+      "type": "integer",
+      "minimum": 4,
+      "maximum": 30,
+      "description": "Trial budget, 4 to 30. Default 20."
+    },
+    "watch": {
+      "type": "boolean",
+      "description": "Pause briefly after each trial so the person can watch. Default true."
+    }
+  },
+  "required": [
+    "parameter",
+    "measurement",
+    "goal"
   ],
   "additionalProperties": false
 }

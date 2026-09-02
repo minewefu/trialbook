@@ -59,6 +59,57 @@ describe('lab store sweeps', () => {
   });
 });
 
+describe('lab store optimisation', () => {
+  it('finds the 45 degree optimum for range without drag to within 0.1 degree', async () => {
+    useLab.getState().openExperiment('projectile', 'you');
+    useLab.getState().setParams('projectile', { drag: 'none', gravity: 9.81, height: 0, speed: 30 }, 'you');
+    const result = await useLab.getState().runOptimization(
+      'projectile',
+      'angle',
+      { measurement: 'range_m', goal: 'max', tolerance: 0.05, maxTrials: 30, watch: false },
+      'agent',
+    );
+    expect(result.sweep.status).toBe('done');
+    expect(result.sweep.kind).toBe('optimize');
+    expect(result.converged).toBe(true);
+    expect(Math.abs(Number(result.best!.params.angle) - 45)).toBeLessThan(0.1);
+    expect(result.trialsUsed).toBeLessThanOrEqual(30);
+    expect(result.atBound).toBeNull();
+  });
+
+  it('finds an optimum below 45 degrees with heavy drag and reports a bound when the response is monotonic', async () => {
+    useLab.getState().setParams('projectile', { drag: 'heavy' }, 'you');
+    const drag = await useLab.getState().runOptimization('projectile', 'angle', { measurement: 'range_m', goal: 'max', watch: false }, 'agent');
+    expect(Number(drag.best!.params.angle)).toBeLessThan(45);
+    expect(Number(drag.best!.params.angle)).toBeGreaterThan(20);
+    const speed = await useLab.getState().runOptimization('projectile', 'speed', { measurement: 'range_m', goal: 'max', watch: false }, 'agent');
+    expect(speed.atBound).toBe('high');
+    useLab.getState().setParams('projectile', { drag: 'none' }, 'you');
+  });
+
+  it('refuses enum parameters and bad ranges, and can be cancelled', async () => {
+    await expect(
+      useLab.getState().runOptimization('projectile', 'drag', { measurement: 'range_m', goal: 'max' }, 'agent'),
+    ).rejects.toThrow(/choice/);
+    await expect(
+      useLab.getState().runOptimization('projectile', 'angle', { measurement: 'range_m', goal: 'max', from: 50, to: 40 }, 'agent'),
+    ).rejects.toThrow(/from < to/);
+    const controller = new AbortController();
+    const promise = useLab.getState().runOptimization(
+      'projectile',
+      'angle',
+      { measurement: 'range_m', goal: 'max', watch: true, signal: controller.signal },
+      'agent',
+    );
+    await wait(400);
+    controller.abort();
+    const result = await promise;
+    expect(result.sweep.status).toBe('cancelled');
+    expect(result.trialsUsed).toBeGreaterThan(0);
+    expect(useLab.getState().activeSweepId).toBeNull();
+  });
+});
+
 describe('lab store attribution', () => {
   it('queues the person’s changes for the agent and toasts the agent’s changes for the person', () => {
     const lab = useLab.getState();

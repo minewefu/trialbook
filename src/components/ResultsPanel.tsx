@@ -138,7 +138,12 @@ function ChartCard({ chart, onRemove }: { chart: Chart; onRemove: () => void }) 
           Remove
         </button>
       </figcaption>
-      <LineChart points={chart.points} xLabel={chart.xLabel} yLabel={chart.yLabel} />
+      {chart.fit && (
+        <p className="small fit-caption">
+          <code>{chart.fit.equation}</code> <span className="muted">· {chart.fit.model} fit · R² {round(chart.fit.r2, 4)} · n {chart.fit.n}</span>
+        </p>
+      )}
+      <LineChart points={chart.points} xLabel={chart.xLabel} yLabel={chart.yLabel} fit={chart.fit} />
     </figure>
   );
 }

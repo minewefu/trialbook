@@ -559,6 +559,22 @@ select {
   stroke-width: 1.5;
 }
 
+.chart .fitline {
+  fill: none;
+  stroke: var(--agent);
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+}
+
+.chart .errorbar line {
+  stroke: var(--muted);
+  stroke-width: 1.2;
+}
+
+.fit-caption {
+  margin: 0 0 6px;
+}
+
 .table-wrap {
   overflow-x: auto;
 }

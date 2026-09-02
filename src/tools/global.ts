@@ -1,9 +1,10 @@
+import { equationFor, fitAuto, fitModel, readingFor, FIT_MODELS, type Fit, type FitModel } from '../lib/fit';
 import { clampInt, clip, fitToBudget, isoTime, round, roundAll } from '../lib/format';
 import { buildReport, downloadText } from '../lib/report';
 import { registerTool, type ToolDef } from '../lib/webmcp';
 import { EXPERIMENTS, EXPERIMENT_ORDER, mustDef } from '../sims';
-import { formatMeasurements, type ExperimentId, type Params } from '../sims/types';
-import { NOTE_KINDS, useLab, type ChartPoint, type NoteKind, type Sweep, type Trial } from '../store';
+import { formatMeasurements, type ExperimentDef, type ExperimentId, type Params } from '../sims/types';
+import { NOTE_KINDS, useLab, type Chart, type ChartPoint, type NoteKind, type Sweep, type Trial } from '../store';
 
 const EXPERIMENT_IDS = EXPERIMENT_ORDER.map((e) => e.id);
 
@@ -62,6 +63,133 @@ function findSweep(id: string): Sweep {
   return sweep;
 }
 
+function findChart(id: string): Chart {
+  const s = useLab.getState();
+  const chart = s.charts.find((c) => c.id === id);
+  if (!chart) {
+    const known = s.charts.slice(-5).map((c) => c.id).join(', ') || 'none yet';
+    throw new Error(`Unknown chart "${id}". Recent charts: ${known}.`);
+  }
+  return chart;
+}
+
+type PointSet = {
+  def: ExperimentDef;
+  sweep?: Sweep;
+  xKey: string;
+  xLabel: string;
+  yKey: string;
+  yLabel: string;
+  points: ChartPoint[];
+  skipped: number;
+};
+
+/**
+ * Turns trials into chart points: x from a parameter, a measurement or the trial number; y from a
+ * measurement. Trials that share the same x (repeats) collapse into one point with mean, sd and n.
+ */
+export function collectPoints(input: { sweep_id?: string; trial_ids?: string[]; x?: string; y: string }): PointSet {
+  const s = useLab.getState();
+  const id = s.experiment;
+  if (!id) throw new Error('Open an experiment first.');
+  const def = mustDef(id);
+  const ySpec = def.measurements.find((m) => m.key === input.y);
+  if (!ySpec) throw new Error(`y must be one of ${def.measurements.map((m) => m.key).join(', ')}.`);
+
+  let trials: Trial[];
+  let sweep: Sweep | undefined;
+  if (input.sweep_id) {
+    sweep = findSweep(input.sweep_id);
+    trials = findTrials(sweep.trialIds);
+  } else if (input.trial_ids?.length) {
+    trials = findTrials(input.trial_ids);
+  } else {
+    sweep = [...s.sweeps].reverse().find((w) => w.experiment === id && w.trialIds.length > 0);
+    trials = sweep ? findTrials(sweep.trialIds) : s.trials.filter((t) => t.experiment === id).slice(-50);
+  }
+  if (!trials.length) throw new Error('No trials to plot yet. Run a trial or a sweep first.');
+
+  const xKey = String(input.x ?? sweep?.parameter ?? 'trial');
+  const raw: ChartPoint[] = [];
+  let xLabel: string;
+  if (xKey === 'trial') {
+    xLabel = 'Trial';
+    trials.forEach((t, i) => raw.push({ x: i + 1, y: t.measurements[input.y], label: t.id, trialId: t.id }));
+  } else {
+    const pSpec = def.params.find((p) => p.key === xKey);
+    const mSpec = def.measurements.find((m) => m.key === xKey);
+    if (pSpec?.kind === 'number') {
+      xLabel = `${pSpec.label} (${pSpec.unit})`;
+      for (const t of trials) raw.push({ x: Number(t.params[xKey]), y: t.measurements[input.y], trialId: t.id });
+    } else if (pSpec?.kind === 'enum') {
+      xLabel = pSpec.label;
+      for (const t of trials) {
+        const value = String(t.params[xKey]);
+        raw.push({ x: pSpec.options.indexOf(value), y: t.measurements[input.y], label: value, trialId: t.id });
+      }
+    } else if (mSpec) {
+      xLabel = `${mSpec.label} (${mSpec.unit})`;
+      for (const t of trials) raw.push({ x: t.measurements[xKey], y: t.measurements[input.y], trialId: t.id });
+    } else {
+      throw new Error(
+        `x must be "trial", a parameter (${def.params.map((p) => p.key).join(', ')}) or a measurement (${def.measurements.map((m) => m.key).join(', ')}).`,
+      );
+    }
+  }
+  const usable = raw.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+  if (!usable.length) throw new Error(`None of those trials has a finite value of ${input.y} to plot.`);
+
+  // Collapse repeats at the same x into mean, sd and n so error bars and fits use one point per x.
+  const groups = new Map<number, ChartPoint[]>();
+  for (const p of usable) {
+    const key = xKey === 'trial' ? p.x : round(p.x, 9);
+    const list = groups.get(key);
+    if (list) list.push(p);
+    else groups.set(key, [p]);
+  }
+  const points: ChartPoint[] = [];
+  for (const [x, list] of groups) {
+    if (list.length === 1) {
+      points.push(list[0]);
+      continue;
+    }
+    const mean = list.reduce((sum, p) => sum + p.y, 0) / list.length;
+    const variance = list.reduce((sum, p) => sum + (p.y - mean) ** 2, 0) / (list.length - 1);
+    points.push({ x, y: mean, sd: Math.sqrt(variance), n: list.length, ...(list[0].label ? { label: list[0].label } : {}) });
+  }
+  if (xKey !== 'trial') points.sort((a, b) => a.x - b.x);
+  return {
+    def,
+    sweep,
+    xKey,
+    xLabel,
+    yKey: input.y,
+    yLabel: `${ySpec.label} (${ySpec.unit})`,
+    points,
+    skipped: raw.length - usable.length,
+  };
+}
+
+const describePoint = (p: ChartPoint) => ({
+  x: round(p.x, 4),
+  ...(p.label ? { label: p.label } : {}),
+  y: round(p.y, 4),
+  ...(p.sd !== undefined ? { sd: round(p.sd, 3), n: p.n } : {}),
+});
+
+function fitSummary(fit: Fit, xKey: string, yKey: string) {
+  return {
+    model: fit.model,
+    equation: equationFor(fit, xKey, yKey),
+    parameters: roundAll(fit.params, 4),
+    r2: round(fit.r2, 5),
+    rmse: round(fit.rmse, 4),
+    n: fit.n,
+    largest_residual: { x: round(fit.maxResidual.x, 4), residual: round(fit.maxResidual.residual, 4) },
+    reading: readingFor(fit, xKey, yKey),
+  };
+}
+
 export const GLOBAL_TOOLS: ToolDef[] = [
   {
     name: 'get_lab_state',
@@ -75,7 +203,7 @@ export const GLOBAL_TOOLS: ToolDef[] = [
       return {
         ...state,
         hint: state.experiment
-          ? 'Use set_parameters, run_trial and sweep_parameter on this experiment; plot_results and notebook_add_entry to record findings.'
+          ? 'Use set_parameters, run_trial and sweep_parameter on this experiment; plot_results, fit_model and notebook_add_entry to record findings.'
           : 'Call open_experiment to start.',
       };
     },
@@ -202,7 +330,7 @@ export const GLOBAL_TOOLS: ToolDef[] = [
   {
     name: 'plot_results',
     description:
-      'Add a chart to the Results panel. y is a measurement key; x defaults to the swept parameter (for a sweep) or the trial number. Pass a sweep_id or trial_ids, or nothing to plot the latest sweep of the open experiment. Returns the chart id with the minimum and maximum points.',
+      'Add a chart to the Results panel. y is a measurement key; x defaults to the swept parameter (for a sweep) or the trial number. Pass a sweep_id or trial_ids, or nothing to plot the latest sweep of the open experiment. Repeated trials at the same x become one point with error bars. Returns the chart id with the minimum and maximum points.',
     inputSchema: objectSchema(
       {
         y: { type: 'string', description: 'Measurement key to plot on the y axis, such as range_m.' },
@@ -215,84 +343,97 @@ export const GLOBAL_TOOLS: ToolDef[] = [
     ),
     example: { y: 'range_m' },
     execute: async (input: { y: string; x?: string; sweep_id?: string; trial_ids?: string[]; title?: string }) => {
-      const s = useLab.getState();
-      const id = s.experiment;
-      if (!id) throw new Error('Open an experiment first.');
-      const def = mustDef(id);
-      const ySpec = def.measurements.find((m) => m.key === input.y);
-      if (!ySpec) throw new Error(`y must be one of ${def.measurements.map((m) => m.key).join(', ')}.`);
-
-      let trials: Trial[];
-      let sweep: Sweep | undefined;
-      if (input.sweep_id) {
-        sweep = findSweep(input.sweep_id);
-        trials = findTrials(sweep.trialIds);
-      } else if (input.trial_ids?.length) {
-        trials = findTrials(input.trial_ids);
-      } else {
-        sweep = [...s.sweeps].reverse().find((w) => w.experiment === id && w.trialIds.length > 0);
-        trials = sweep ? findTrials(sweep.trialIds) : s.trials.filter((t) => t.experiment === id).slice(-50);
-      }
-      if (!trials.length) throw new Error('No trials to plot yet. Run a trial or a sweep first.');
-
-      const xKey = String(input.x ?? sweep?.parameter ?? 'trial');
-      const points: ChartPoint[] = [];
-      let xLabel: string;
-      if (xKey === 'trial') {
-        xLabel = 'Trial';
-        trials.forEach((t, i) => points.push({ x: i + 1, y: t.measurements[input.y], label: t.id, trialId: t.id }));
-      } else {
-        const pSpec = def.params.find((p) => p.key === xKey);
-        const mSpec = def.measurements.find((m) => m.key === xKey);
-        if (pSpec?.kind === 'number') {
-          xLabel = `${pSpec.label} (${pSpec.unit})`;
-          for (const t of trials) points.push({ x: Number(t.params[xKey]), y: t.measurements[input.y], trialId: t.id });
-          points.sort((a, b) => a.x - b.x);
-        } else if (pSpec?.kind === 'enum') {
-          xLabel = pSpec.label;
-          for (const t of trials) {
-            const value = String(t.params[xKey]);
-            points.push({ x: pSpec.options.indexOf(value), y: t.measurements[input.y], label: value, trialId: t.id });
-          }
-          points.sort((a, b) => a.x - b.x);
-        } else if (mSpec) {
-          xLabel = `${mSpec.label} (${mSpec.unit})`;
-          for (const t of trials) points.push({ x: t.measurements[xKey], y: t.measurements[input.y], trialId: t.id });
-          points.sort((a, b) => a.x - b.x);
-        } else {
-          throw new Error(
-            `x must be "trial", a parameter (${def.params.map((p) => p.key).join(', ')}) or a measurement (${def.measurements.map((m) => m.key).join(', ')}).`,
-          );
-        }
-      }
-      const usable = points.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
-      if (!usable.length) throw new Error(`None of those trials has a finite value of ${input.y} to plot.`);
-      const yLabel = `${ySpec.label} (${ySpec.unit})`;
-      const title = clip(String(input.title ?? `${ySpec.label} vs ${xLabel}`), 80);
-      const chart = s.addChart({
+      const set = collectPoints(input);
+      const title = clip(String(input.title ?? `${set.yLabel.replace(/ \(.*\)$/, '')} vs ${set.xLabel}`), 80);
+      const chart = useLab.getState().addChart({
         title,
-        experiment: id,
-        xKey,
-        xLabel,
-        yKey: input.y,
-        yLabel,
-        points: usable,
-        ...(sweep ? { sweepId: sweep.id } : {}),
+        experiment: set.def.id,
+        xKey: set.xKey,
+        xLabel: set.xLabel,
+        yKey: set.yKey,
+        yLabel: set.yLabel,
+        points: set.points,
+        ...(set.sweep ? { sweepId: set.sweep.id } : {}),
         actor: 'agent',
       });
-      const yMax = usable.reduce((best, p) => (p.y > best.y ? p : best), usable[0]);
-      const yMin = usable.reduce((best, p) => (p.y < best.y ? p : best), usable[0]);
-      const describe = (p: ChartPoint) => ({ x: round(p.x, 4), ...(p.label ? { label: p.label } : {}), y: round(p.y, 4) });
+      const yMax = set.points.reduce((best, p) => (p.y > best.y ? p : best), set.points[0]);
+      const yMin = set.points.reduce((best, p) => (p.y < best.y ? p : best), set.points[0]);
+      const repeated = set.points.some((p) => p.n !== undefined);
       return {
         chart_id: chart.id,
         title,
-        x: xKey,
-        y: input.y,
-        points: usable.length,
-        ...(usable.length < points.length ? { skipped: points.length - usable.length } : {}),
-        y_max: describe(yMax),
-        y_min: describe(yMin),
-        hint: 'The chart is now visible in the Results panel. Consider a notebook_add_entry with your conclusion.',
+        x: set.xKey,
+        y: set.yKey,
+        points: set.points.length,
+        ...(repeated ? { error_bars: 'one standard deviation across repeats' } : {}),
+        ...(set.skipped ? { skipped: set.skipped } : {}),
+        y_max: describePoint(yMax),
+        y_min: describePoint(yMin),
+        hint: 'The chart is now in the Results panel. Call fit_model with this chart_id to fit a law, or notebook_add_entry with your conclusion.',
+      };
+    },
+  },
+  {
+    name: 'fit_model',
+    description:
+      'Fit a model to sweep results and draw it over the chart: linear, quadratic, power law (y = A·x^p) or exponential, or auto to pick the best. Pass a chart_id to fit an existing chart, or a sweep_id or trial_ids with x and y to build one. Returns the equation with the real variable names, R², RMSE, the largest residual and a plain-language reading.',
+    inputSchema: objectSchema({
+      chart_id: { type: 'string', description: 'Fit the points of an existing chart, such as chart-2.' },
+      sweep_id: { type: 'string', description: 'Sweep to fit, such as sweep-3, when no chart exists yet.' },
+      trial_ids: { type: 'array', items: { type: 'string' }, maxItems: 50, description: 'Specific trials to fit.' },
+      x: { type: 'string', description: 'Parameter or measurement key for x. Defaults to the swept parameter.' },
+      y: { type: 'string', description: 'Measurement key for y. Required unless chart_id is given.' },
+      model: { type: 'string', enum: ['auto', ...FIT_MODELS], description: 'Which model to fit. Default auto.' },
+    }),
+    example: { model: 'power' },
+    execute: async (input: { chart_id?: string; sweep_id?: string; trial_ids?: string[]; x?: string; y?: string; model?: string }) => {
+      const s = useLab.getState();
+      let chart: Chart;
+      if (input.chart_id) {
+        chart = findChart(input.chart_id);
+      } else {
+        if (!input.y) throw new Error('Give y (a measurement key), or a chart_id to fit an existing chart.');
+        const latestChart = !input.sweep_id && !input.trial_ids?.length ? [...s.charts].reverse().find((c) => c.experiment === s.experiment && c.yKey === input.y && (!input.x || c.xKey === input.x)) : undefined;
+        if (latestChart) {
+          chart = latestChart;
+        } else {
+          const set = collectPoints({ sweep_id: input.sweep_id, trial_ids: input.trial_ids, x: input.x, y: input.y });
+          chart = s.addChart({
+            title: clip(`${set.yLabel.replace(/ \(.*\)$/, '')} vs ${set.xLabel}`, 80),
+            experiment: set.def.id,
+            xKey: set.xKey,
+            xLabel: set.xLabel,
+            yKey: set.yKey,
+            yLabel: set.yLabel,
+            points: set.points,
+            ...(set.sweep ? { sweepId: set.sweep.id } : {}),
+            actor: 'agent',
+          });
+        }
+      }
+      if (chart.xKey === 'trial') throw new Error('This chart has the trial number on x. Plot against a parameter or a measurement first, then fit.');
+      const model = (input.model ?? 'auto') as FitModel | 'auto';
+      let fit: Fit;
+      let candidates: Partial<Record<FitModel, number>> | undefined;
+      if (model === 'auto') {
+        const auto = fitAuto(chart.points);
+        fit = auto.best;
+        candidates = auto.candidates;
+      } else {
+        if (!FIT_MODELS.includes(model)) throw new Error(`model must be auto or one of ${FIT_MODELS.join(', ')}.`);
+        fit = fitModel(chart.points, model);
+      }
+      const summary = fitSummary(fit, chart.xKey, chart.yKey);
+      useLab.getState().setChartFit(
+        chart.id,
+        { model: fit.model, params: fit.params, equation: summary.equation, r2: fit.r2, rmse: fit.rmse, n: fit.n },
+        'agent',
+      );
+      return {
+        chart_id: chart.id,
+        ...summary,
+        ...(candidates ? { candidates_r2: candidates } : {}),
+        hint: 'The fitted curve is drawn on the chart. Record the law and its R² with notebook_add_entry.',
       };
     },
   },

@@ -26,14 +26,16 @@ describe('tool registry', () => {
       'notebook_add_entry',
       'notebook_read',
       'export_report',
+      'fit_model',
       'set_parameters',
       'run_trial',
       'sweep_parameter',
+      'optimize_parameter',
       'reset_experiment',
     ]) {
       expect(names).toContain(expected);
     }
-    expect(names.length).toBeLessThanOrEqual(12);
+    expect(names.length).toBeLessThanOrEqual(14);
   });
 
   it('keeps names, descriptions and schemas within the guidance limits for every experiment', () => {
@@ -173,7 +175,7 @@ describe('tool behaviour', () => {
     const props = (setTool.def.inputSchema as { properties: Record<string, unknown> }).properties;
     expect(Object.keys(props)).toContain('length');
     expect(Object.keys(props)).not.toContain('speed');
-    expect(listTools().length).toBeLessThanOrEqual(12);
+    expect(listTools().length).toBeLessThanOrEqual(14);
 
     const trial = (await runTool('run_trial', { amplitude: 20, length: 1 })) as Result;
     expect(trial.experiment).toBe('pendulum');
@@ -193,6 +195,51 @@ describe('tool behaviour', () => {
 
     const back = (await runTool('open_experiment', { experiment: 'projectile' })) as Result;
     expect(back.experiment).toBe('projectile');
+  });
+
+  it('fit_model finds the square-root law from a pendulum length sweep and draws it on the chart', async () => {
+    useLab.getState().openExperiment('pendulum', 'you');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const sweep = (await runTool('sweep_parameter', { parameter: 'length', from: 0.25, to: 4, steps: 8, watch: false })) as Result;
+    expect(sweep.count).toBe(8);
+    const fit = (await runTool('fit_model', { sweep_id: sweep.sweep_id, y: 'period_s', model: 'power' })) as Result;
+    expect(fit.model).toBe('power');
+    expect(fit.parameters.p).toBeCloseTo(0.5, 2);
+    expect(fit.equation).toMatch(/^period_s = .*·length\^0\.5/);
+    expect(fit.r2).toBeGreaterThan(0.9999);
+    expect(fit.reading).toContain('square root');
+    expect(size(fit)).toBeLessThan(MAX);
+    const chart = useLab.getState().charts.find((c) => c.id === fit.chart_id)!;
+    expect(chart.fit?.model).toBe('power');
+    expect(chart.points.length).toBe(8);
+
+    const auto = (await runTool('fit_model', { chart_id: fit.chart_id })) as Result;
+    expect(auto.model).toBe('power');
+    expect(auto.candidates_r2.power).toBeGreaterThan(0.999);
+    expect(size(auto)).toBeLessThan(MAX);
+
+    const bad = (await runTool('fit_model', { chart_id: fit.chart_id, model: 'cubic' })) as Result;
+    expect(bad.ok).toBe(false);
+    const trialAxis = (await runTool('plot_results', { y: 'period_s', x: 'trial', sweep_id: sweep.sweep_id })) as Result;
+    const refused = (await runTool('fit_model', { chart_id: trialAxis.chart_id })) as Result;
+    expect(refused.ok).toBe(false);
+    expect(refused.error).toMatch(/trial number/);
+    useLab.getState().openExperiment('projectile', 'you');
+  });
+
+  it('optimize_parameter returns the optimum with its bracket and stays small', async () => {
+    useLab.getState().openExperiment('projectile', 'you');
+    useLab.getState().setParams('projectile', { drag: 'none', speed: 30, height: 0, gravity: 9.81 }, 'you');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const r = (await runTool('optimize_parameter', { parameter: 'angle', measurement: 'range_m', goal: 'max', tolerance: 0.1, watch: false })) as Result;
+    expect(r.status).toBe('done');
+    expect(Math.abs(r.best.angle - 45)).toBeLessThan(0.15);
+    expect(r.best.range_m).toBeCloseTo(91.74, 1);
+    expect(r.bracket_width).toBeLessThanOrEqual(0.1);
+    expect(r.converged).toBe(true);
+    expect(size(r)).toBeLessThan(MAX);
+    const bad = (await runTool('optimize_parameter', { parameter: 'drag', measurement: 'range_m', goal: 'max' })) as Result;
+    expect(bad.ok).toBe(false);
   });
 
   it('open_experiment refuses experiments that do not exist and keeps the current one open', async () => {

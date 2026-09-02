@@ -48,8 +48,13 @@ export function buildReport(s: Pick<LabStore, 'trials' | 'sweeps' | 'charts' | '
 
     const charts = s.charts.filter((c) => c.experiment === meta.id);
     for (const c of charts) {
-      lines.push(`### Chart ${c.id}: ${c.title}`, '', `| ${c.xLabel} | ${c.yLabel} |`, '| --- | --- |');
-      for (const p of c.points.slice(0, MAX_CHART_ROWS)) lines.push(`| ${p.label ?? round(p.x, 4)} | ${round(p.y, 4)} |`);
+      lines.push(`### Chart ${c.id}: ${c.title}`, '');
+      if (c.fit) lines.push(`Fit: \`${c.fit.equation}\` (${c.fit.model}, R² ${round(c.fit.r2, 4)}, n ${c.fit.n})`, '');
+      const withSd = c.points.some((p) => p.sd !== undefined);
+      lines.push(`| ${c.xLabel} | ${c.yLabel} |${withSd ? ' sd | n |' : ''}`, `| --- | --- |${withSd ? ' --- | --- |' : ''}`);
+      for (const p of c.points.slice(0, MAX_CHART_ROWS)) {
+        lines.push(`| ${p.label ?? round(p.x, 4)} | ${round(p.y, 4)} |${withSd ? ` ${p.sd !== undefined ? round(p.sd, 3) : ''} | ${p.n ?? 1} |` : ''}`);
+      }
       lines.push('');
     }
   }
