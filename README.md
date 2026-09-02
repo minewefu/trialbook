@@ -11,9 +11,10 @@ attributed and editable.
 Built for the [OpenAI WebMCP Challenge](https://webmcp.devpost.com/) (August 25 to September 3, 2026).
 All code in this repository was written during the submission period.
 
-> **Status: milestone 3 of 5.** Three experiments are live (projectile motion, pendulum, predator and prey),
-> each with tested physics, an animated stage, sweeps with progress and cancellation, charts, and the shared
-> notebook. Polish, a walkthrough and the demo video come next.
+> **Status: feature complete.** Three experiments (projectile motion, pendulum, predator and prey), each with
+> tested physics, an animated stage, sweeps with progress and cancellation, charts, the shared notebook, a
+> first-visit walkthrough, and a generated tools reference. Remaining before submission: screenshots and the
+> demo video.
 
 ## Experiments
 
