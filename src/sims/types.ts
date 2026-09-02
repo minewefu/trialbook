@@ -1,4 +1,5 @@
 import { round } from '../lib/format';
+import { mulberry32, perturb, seedFrom, type NoiseSpec } from '../lib/noise';
 
 export type ExperimentId = 'projectile' | 'pendulum' | 'predator_prey';
 
@@ -47,7 +48,20 @@ export type ExperimentDef = {
   run: (params: Params) => TrialResult;
   /** One or two sentences of domain guidance the agent sees in tool descriptions. */
   agentGuidance: string;
+  /** Synthetic instrument noise per measurement key, applied when measurement error is switched on. */
+  noise?: Record<string, NoiseSpec>;
+  /** Recomputes measurements that derive from noisy ones (for example a percentage deviation). */
+  derive?: (m: Measurements) => Measurements;
 };
+
+/** Applies the experiment's synthetic noise deterministically for a given seed (the trial id). */
+export function applyMeasurementNoise(def: ExperimentDef, measurements: Measurements, seed: string): Measurements {
+  if (!def.noise) return measurements;
+  const rng = mulberry32(seedFrom(seed));
+  const out: Measurements = { ...measurements };
+  for (const [key, spec] of Object.entries(def.noise)) if (key in out) out[key] = perturb(out[key], spec, rng);
+  return def.derive ? def.derive(out) : out;
+}
 
 export function defaultParams(def: ExperimentDef): Params {
   const out: Params = {};

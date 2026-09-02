@@ -69,6 +69,11 @@ export function ResultsPanel() {
                   <td className="mono">
                     {t.id}
                     {t.sweepId && <span className="muted small"> · {t.sweepId}</span>}
+                    {t.noisy && (
+                      <span className="badge badge-noisy" title="Synthetic measurement error applied to the readings">
+                        ±
+                      </span>
+                    )}
                   </td>
                   <td>
                     <span className={`badge ${t.actor === 'agent' ? 'badge-agent' : 'badge-you'}`}>{t.actor}</span>

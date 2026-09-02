@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
-import { clip } from './lib/format';
+import { clip, round } from './lib/format';
 import { EXPERIMENTS, mustDef } from './sims';
 import {
+  applyMeasurementNoise,
   defaultParams,
   formatMeasurements,
   validatePatch,
@@ -16,6 +17,7 @@ import {
 export type Actor = 'you' | 'agent';
 export type NoteKind = 'hypothesis' | 'observation' | 'conclusion' | 'note';
 export const NOTE_KINDS: readonly NoteKind[] = ['hypothesis', 'observation', 'conclusion', 'note'];
+export type ProposalStatus = 'pending' | 'accepted' | 'rejected';
 
 export type Trial = {
   id: string;
@@ -27,6 +29,8 @@ export type Trial = {
   ts: number;
   sweepId?: string;
   label?: string;
+  /** True when synthetic measurement error was applied to the readings. */
+  noisy?: boolean;
 };
 
 export type SweepStatus = 'running' | 'done' | 'cancelled' | 'failed';
@@ -107,17 +111,21 @@ export type NotebookEntry = {
   sweepId?: string;
   chartId?: string;
   edited?: boolean;
+  /** Set on agent conclusions written in assignment mode: the person accepts, edits or rejects them. */
+  status?: ProposalStatus;
 };
 
 export type Change = { ts: number; actor: Actor; text: string; key?: string };
 export type Toast = { id: number; text: string; actor: Actor; ts: number };
-export type SweepOptions = { watch?: boolean; signal?: AbortSignal; label?: string };
+export type SweepOptions = { watch?: boolean; signal?: AbortSignal; label?: string; repeats?: number; noise?: boolean };
+export type RepeatOptions = { noise?: boolean; signal?: AbortSignal; label?: string; watch?: boolean };
 
 const MAX_TRIALS = 200;
 const MAX_CHANGES = 30;
 const MAX_TOASTS = 4;
 const HIGHLIGHT_MS = 2500;
 export const MAX_SWEEP_VALUES = 50;
+export const MAX_REPEATS = 20;
 
 type Counters = { trial: number; sweep: number; chart: number; note: number; toast: number };
 
@@ -130,6 +138,10 @@ type LabData = {
   notebook: NotebookEntry[];
   counters: Counters;
   watchMode: boolean;
+  /** The agent proposes conclusions and needs a hypothesis from the person before sweeping. */
+  assignmentMode: boolean;
+  /** Apply synthetic instrument noise to every new reading. */
+  measurementError: boolean;
 };
 
 type LabTransient = {
@@ -151,11 +163,16 @@ type LabActions = {
   resetParams: (id: ExperimentId, actor: Actor) => Params;
   runTrial: (id: ExperimentId, actor: Actor, overrides?: Record<string, unknown>, label?: string) => Trial;
   runSweep: (id: ExperimentId, parameter: string, values: unknown[], actor: Actor, opts?: SweepOptions) => Promise<Sweep>;
+  runRepeats: (id: ExperimentId, n: number, actor: Actor, opts?: RepeatOptions) => Promise<Sweep>;
   runOptimization: (id: ExperimentId, parameter: string, opts: OptimizeOptions, actor: Actor) => Promise<OptimizeResult>;
   cancelSweep: () => boolean;
   showTrial: (trialId: string | null) => void;
   replay: () => void;
   setWatchMode: (on: boolean) => void;
+  setAssignmentMode: (on: boolean) => void;
+  setMeasurementError: (on: boolean, actor: Actor) => void;
+  /** Returns the reason the agent may not run a batch right now, or null when it may. */
+  hypothesisGate: (id: ExperimentId) => string | null;
   addNote: (input: {
     author: Actor;
     kind: NoteKind;
@@ -166,6 +183,7 @@ type LabActions = {
   }) => NotebookEntry;
   updateNote: (id: string, text: string) => void;
   deleteNote: (id: string, actor: Actor) => void;
+  resolveProposal: (id: string, decision: 'accepted' | 'rejected', editedText?: string) => void;
   addChart: (chart: Omit<Chart, 'id' | 'ts'>) => Chart;
   setChartFit: (id: string, fit: ChartFit, actor: Actor) => void;
   removeChart: (id: string, actor: Actor) => void;
@@ -205,6 +223,11 @@ function pickStorage(): StateStorage {
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 let sweepController: AbortController | null = null;
 
+/** The person's hypotheses for an experiment; the gate in assignment mode. */
+export function personHypotheses(notebook: NotebookEntry[], experiment: ExperimentId | null): NotebookEntry[] {
+  return notebook.filter((n) => n.author === 'you' && n.kind === 'hypothesis' && n.experiment === experiment);
+}
+
 const initialData: LabData = {
   experiment: 'projectile',
   params: {},
@@ -214,6 +237,8 @@ const initialData: LabData = {
   notebook: [],
   counters: { trial: 0, sweep: 0, chart: 0, note: 0, toast: 0 },
   watchMode: true,
+  assignmentMode: false,
+  measurementError: false,
 };
 
 const initialTransient: LabTransient = {
@@ -241,22 +266,57 @@ export const useLab = create<LabStore>()(
         else get().pushToast(`Agent ${text}`, actor);
       };
 
-      const createTrial = (id: ExperimentId, params: Params, actor: Actor, label?: string, sweepId?: string): Trial => {
+      const createTrial = (
+        id: ExperimentId,
+        params: Params,
+        actor: Actor,
+        label?: string,
+        sweepId?: string,
+        noise = get().measurementError,
+      ): Trial => {
         const def = mustDef(id);
         const { measurements, series } = def.run(params);
+        const trialId = nextId('trial');
         const trial: Trial = {
-          id: nextId('trial'),
+          id: trialId,
           experiment: id,
           params: { ...params },
-          measurements,
+          measurements: noise ? applyMeasurementNoise(def, measurements, trialId) : measurements,
           series,
           actor,
           ts: Date.now(),
           ...(sweepId ? { sweepId } : {}),
           ...(label ? { label: clip(label, 60) } : {}),
+          ...(noise ? { noisy: true } : {}),
         };
         set((s) => ({ trials: [...s.trials, trial].slice(-MAX_TRIALS), currentTrialId: trial.id }));
         return trial;
+      };
+
+      const guardBatch = (id: ExperimentId, actor: Actor) => {
+        if (actor === 'agent') {
+          const gate = get().hypothesisGate(id);
+          if (gate) throw new Error(gate);
+        }
+        if (get().activeSweepId) throw new Error('Another sweep is still running. Wait for it to finish or cancel it first.');
+      };
+
+      const startBatch = (sweep: Sweep, total: number, signal?: AbortSignal): AbortController => {
+        const controller = new AbortController();
+        sweepController = controller;
+        signal?.addEventListener('abort', () => controller.abort(), { once: true });
+        set((s) => ({ sweeps: [...s.sweeps, sweep], activeSweepId: sweep.id, sweepProgress: { done: 0, total } }));
+        return controller;
+      };
+
+      const finishBatch = (sweepId: string, status: SweepStatus, error?: string): Sweep => {
+        set((s) => ({
+          sweeps: s.sweeps.map((w) => (w.id === sweepId ? { ...w, status, ...(error ? { error } : {}) } : w)),
+          activeSweepId: null,
+          sweepProgress: null,
+        }));
+        sweepController = null;
+        return get().sweeps.find((w) => w.id === sweepId)!;
       };
 
       return {
@@ -322,17 +382,23 @@ export const useLab = create<LabStore>()(
           if (values.length > MAX_SWEEP_VALUES) {
             throw new Error(`A sweep can run at most ${MAX_SWEEP_VALUES} values; you asked for ${values.length}.`);
           }
+          const repeats = Math.min(10, Math.max(1, Math.round(opts.repeats ?? 1)));
+          if (values.length * repeats > MAX_SWEEP_VALUES) {
+            throw new Error(`${values.length} values × ${repeats} repeats is ${values.length * repeats} trials; the limit is ${MAX_SWEEP_VALUES}.`);
+          }
           const validated: ParamValue[] = [];
           for (const value of values) {
             const { values: ok, errors } = validatePatch(def, { [parameter]: value });
             if (errors.length) throw new Error(errors.join(' '));
             validated.push(ok[parameter]);
           }
-          if (get().activeSweepId) throw new Error('Another sweep is still running. Wait for it to finish or cancel it first.');
-
-          const controller = new AbortController();
-          sweepController = controller;
-          opts.signal?.addEventListener('abort', () => controller.abort(), { once: true });
+          guardBatch(id, actor);
+          const noise = opts.noise ?? get().measurementError;
+          if (repeats > 1 && !noise) {
+            throw new Error('Repeats only make sense with measurement error on; pass noise: true or switch on "Simulate measurement error".');
+          }
+          const schedule: ParamValue[] = [];
+          for (const v of validated) for (let r = 0; r < repeats; r++) schedule.push(v);
 
           const sweepId = nextId('sweep');
           const base = get().paramsFor(id);
@@ -340,33 +406,30 @@ export const useLab = create<LabStore>()(
             id: sweepId,
             experiment: id,
             parameter,
-            values: validated,
+            values: schedule,
             trialIds: [],
             actor,
             ts: Date.now(),
             status: 'running',
+            kind: 'sweep',
             ...(opts.label ? { label: clip(opts.label, 60) } : {}),
           };
-          set((s) => ({
-            sweeps: [...s.sweeps, sweep],
-            activeSweepId: sweepId,
-            sweepProgress: { done: 0, total: validated.length },
-          }));
-          announce(actor, `started ${sweepId}: ${parameter} over ${validated.length} values`);
+          const controller = startBatch(sweep, schedule.length, opts.signal);
+          announce(actor, `started ${sweepId}: ${parameter} over ${validated.length} values${repeats > 1 ? ` × ${repeats} repeats` : ''}`);
 
-          const pause = opts.watch ? Math.max(120, Math.min(600, 4000 / validated.length)) : 0;
+          const pause = opts.watch ? Math.max(120, Math.min(600, 4000 / schedule.length)) : 0;
           let status: SweepStatus = 'done';
           let error: string | undefined;
           try {
-            for (let i = 0; i < validated.length; i++) {
+            for (let i = 0; i < schedule.length; i++) {
               if (controller.signal.aborted) {
                 status = 'cancelled';
                 break;
               }
-              const trial = createTrial(id, { ...base, [parameter]: validated[i] }, actor, undefined, sweepId);
+              const trial = createTrial(id, { ...base, [parameter]: schedule[i] }, actor, undefined, sweepId, noise);
               set((s) => ({
                 sweeps: s.sweeps.map((w) => (w.id === sweepId ? { ...w, trialIds: [...w.trialIds, trial.id] } : w)),
-                sweepProgress: { done: i + 1, total: validated.length },
+                sweepProgress: { done: i + 1, total: schedule.length },
               }));
               if (pause) await sleep(pause);
               else if (i % 4 === 3) await sleep(0);
@@ -375,14 +438,55 @@ export const useLab = create<LabStore>()(
             status = 'failed';
             error = err instanceof Error ? err.message : String(err);
           }
-          set((s) => ({
-            sweeps: s.sweeps.map((w) => (w.id === sweepId ? { ...w, status, ...(error ? { error } : {}) } : w)),
-            activeSweepId: null,
-            sweepProgress: null,
-          }));
-          sweepController = null;
-          const finished = get().sweeps.find((w) => w.id === sweepId)!;
+          const finished = finishBatch(sweepId, status, error);
           announce(actor, `${status === 'done' ? 'finished' : status} ${sweepId} (${finished.trialIds.length} trials)`);
+          return finished;
+        },
+
+        runRepeats: async (id, n, actor, opts = {}) => {
+          const def = mustDef(id);
+          const count = Math.min(MAX_REPEATS, Math.max(2, Math.round(n)));
+          guardBatch(id, actor);
+          const noise = opts.noise ?? true;
+          const sweepId = nextId('sweep');
+          const params = get().paramsFor(id);
+          const sweep: Sweep = {
+            id: sweepId,
+            experiment: id,
+            parameter: 'repeat',
+            values: [],
+            trialIds: [],
+            actor,
+            ts: Date.now(),
+            status: 'running',
+            kind: 'repeats',
+            label: clip(opts.label ?? `${count} repeats`, 60),
+          };
+          const controller = startBatch(sweep, count, opts.signal);
+          announce(actor, `started ${sweepId}: ${count} repeated trials${noise ? ' with measurement error' : ''}`);
+          const pause = opts.watch ? Math.max(120, Math.min(600, 4000 / count)) : 0;
+          let status: SweepStatus = 'done';
+          let error: string | undefined;
+          try {
+            for (let i = 0; i < count; i++) {
+              if (controller.signal.aborted) {
+                status = 'cancelled';
+                break;
+              }
+              const trial = createTrial(id, params, actor, undefined, sweepId, noise);
+              set((s) => ({
+                sweeps: s.sweeps.map((w) => (w.id === sweepId ? { ...w, values: [...w.values, i + 1], trialIds: [...w.trialIds, trial.id] } : w)),
+                sweepProgress: { done: i + 1, total: count },
+              }));
+              if (pause) await sleep(pause);
+              else if (i % 4 === 3) await sleep(0);
+            }
+          } catch (err) {
+            status = 'failed';
+            error = err instanceof Error ? err.message : String(err);
+          }
+          const finished = finishBatch(sweepId, status, error);
+          announce(actor, `${status === 'done' ? 'finished' : status} ${sweepId} (${finished.trialIds.length} repeats of ${def.title})`);
           return finished;
         },
 
@@ -402,11 +506,8 @@ export const useLab = create<LabStore>()(
           }
           const tolerance = Math.max((hi0 - lo0) / 1e6, opts.tolerance ?? (hi0 - lo0) / 100);
           const maxTrials = Math.min(30, Math.max(4, Math.round(opts.maxTrials ?? 20)));
-          if (get().activeSweepId) throw new Error('Another sweep is still running. Wait for it to finish or cancel it first.');
+          guardBatch(id, actor);
 
-          const controller = new AbortController();
-          sweepController = controller;
-          opts.signal?.addEventListener('abort', () => controller.abort(), { once: true });
           const sweepId = nextId('sweep');
           const base = get().paramsFor(id);
           const sweep: Sweep = {
@@ -421,7 +522,7 @@ export const useLab = create<LabStore>()(
             kind: 'optimize',
             label: clip(opts.label ?? `${opts.goal === 'max' ? 'maximise' : 'minimise'} ${opts.measurement}`, 60),
           };
-          set((s) => ({ sweeps: [...s.sweeps, sweep], activeSweepId: sweepId, sweepProgress: { done: 0, total: maxTrials } }));
+          const controller = startBatch(sweep, maxTrials, opts.signal);
           announce(actor, `started ${sweepId}: searching ${parameter} to ${opts.goal === 'max' ? 'maximise' : 'minimise'} ${opts.measurement}`);
 
           const pause = opts.watch === false ? 0 : 150;
@@ -479,21 +580,15 @@ export const useLab = create<LabStore>()(
             status = 'failed';
             error = err instanceof Error ? err.message : String(err);
           }
-          set((s) => ({
-            sweeps: s.sweeps.map((w) => (w.id === sweepId ? { ...w, status, ...(error ? { error } : {}) } : w)),
-            activeSweepId: null,
-            sweepProgress: null,
-          }));
-          sweepController = null;
+          const finished = finishBatch(sweepId, status, error);
 
           let best: Trial | null = null;
           for (const t of evaluated) if (!best || score(t) > score(best)) best = t;
           const bestX = best ? Number(best.params[parameter]) : Number.NaN;
           const atBound = !best ? null : bestX - lo0 <= tolerance ? 'low' : hi0 - bestX <= tolerance ? 'high' : null;
-          const finished = get().sweeps.find((w) => w.id === sweepId)!;
           announce(
             actor,
-            `${status === 'done' ? 'finished' : status} ${sweepId} after ${evaluated.length} trials${best ? `: best ${parameter} ${bestX}` : ''}`,
+            `${status === 'done' ? 'finished' : status} ${sweepId} after ${evaluated.length} trials${best ? `: best ${parameter} ${round(bestX, 4)}` : ''}`,
           );
           return { sweep: finished, best, bracket: [lo, hi], tolerance, trialsUsed: evaluated.length, converged: hi - lo <= tolerance, atBound };
         },
@@ -508,9 +603,29 @@ export const useLab = create<LabStore>()(
         replay: () => set((s) => ({ replayNonce: s.replayNonce + 1 })),
         setWatchMode: (on) => set({ watchMode: on }),
 
+        setAssignmentMode: (on) => {
+          if (get().assignmentMode === on) return;
+          set({ assignmentMode: on });
+          get().recordChange('you', on ? 'turned assignment mode on: conclusions you write become proposals and sweeps need a hypothesis from the person first' : 'turned assignment mode off');
+        },
+
+        setMeasurementError: (on, actor) => {
+          if (get().measurementError === on) return;
+          set({ measurementError: on });
+          announce(actor, on ? 'switched on simulated measurement error for new readings' : 'switched off simulated measurement error');
+        },
+
+        hypothesisGate: (id) => {
+          const s = get();
+          if (!s.assignmentMode) return null;
+          if (personHypotheses(s.notebook, id).length > 0) return null;
+          return 'Assignment mode is on: the person must write a hypothesis in the notebook for this experiment before you run a sweep, repeats or an optimisation. Ask them for one, then retry. Single trials are still allowed.';
+        },
+
         addNote: (input) => {
           const state = get();
           const experiment = state.experiment;
+          const proposal = state.assignmentMode && input.author === 'agent' && input.kind === 'conclusion';
           const entry: NotebookEntry = {
             id: nextId('note'),
             ts: Date.now(),
@@ -522,9 +637,15 @@ export const useLab = create<LabStore>()(
             ...(input.trialId ? { trialId: input.trialId } : {}),
             ...(input.sweepId ? { sweepId: input.sweepId } : {}),
             ...(input.chartId ? { chartId: input.chartId } : {}),
+            ...(proposal ? { status: 'pending' as const } : {}),
           };
           set((s) => ({ notebook: [...s.notebook, entry] }));
-          announce(input.author, `added a ${input.kind} to the notebook: "${clip(entry.text, 80)}"`);
+          announce(
+            input.author,
+            proposal
+              ? `proposed a conclusion; accept, edit or reject it in the notebook: "${clip(entry.text, 80)}"`
+              : `added a ${input.kind} to the notebook: "${clip(entry.text, 80)}"`,
+          );
           return entry;
         },
 
@@ -538,6 +659,20 @@ export const useLab = create<LabStore>()(
         deleteNote: (id, actor) => {
           set((s) => ({ notebook: s.notebook.filter((n) => n.id !== id) }));
           announce(actor, `deleted notebook entry ${id}`);
+        },
+
+        resolveProposal: (id, decision, editedText) => {
+          const entry = get().notebook.find((n) => n.id === id);
+          if (!entry || entry.status === undefined) return;
+          const edited = editedText !== undefined && editedText.trim() !== entry.text;
+          set((s) => ({
+            notebook: s.notebook.map((n) =>
+              n.id === id
+                ? { ...n, status: decision, ...(edited ? { text: editedText.trim().slice(0, 4000), edited: true } : {}) }
+                : n,
+            ),
+          }));
+          get().recordChange('you', `${decision} the proposed conclusion ${id}${edited ? ' after editing it' : ''}`);
         },
 
         addChart: (chart) => {
@@ -609,6 +744,8 @@ export const useLab = create<LabStore>()(
         notebook: s.notebook,
         counters: s.counters,
         watchMode: s.watchMode,
+        assignmentMode: s.assignmentMode,
+        measurementError: s.measurementError,
       }),
     },
   ),

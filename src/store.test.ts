@@ -110,6 +110,78 @@ describe('lab store optimisation', () => {
   });
 });
 
+describe('lab store measurement error', () => {
+  it('applies deterministic synthetic noise per trial and repeats scatter around the exact value', async () => {
+    const lab = useLab.getState();
+    lab.openExperiment('projectile', 'you');
+    lab.setParams('projectile', { angle: 45, speed: 30, drag: 'none', height: 0, gravity: 9.81 }, 'you');
+    const exact = lab.runTrial('projectile', 'you').measurements.range_m;
+    expect(useLab.getState().trials.at(-1)?.noisy).toBeUndefined();
+    lab.setMeasurementError(true, 'you');
+    const noisyTrial = useLab.getState().runTrial('projectile', 'you');
+    expect(noisyTrial.noisy).toBe(true);
+    const sweep = await useLab.getState().runRepeats('projectile', 12, 'agent', { watch: false });
+    expect(sweep.kind).toBe('repeats');
+    const ranges = sweep.trialIds.map((id) => useLab.getState().trials.find((t) => t.id === id)!.measurements.range_m);
+    const mean = ranges.reduce((s, v) => s + v, 0) / ranges.length;
+    const sd = Math.sqrt(ranges.reduce((s, v) => s + (v - mean) ** 2, 0) / (ranges.length - 1));
+    expect(sd).toBeGreaterThan(0.05);
+    expect(sd).toBeLessThan(2);
+    expect(Math.abs(mean - exact)).toBeLessThan(4 * sd / Math.sqrt(ranges.length) + 0.05);
+    expect(new Set(ranges).size).toBeGreaterThan(1);
+    lab.setMeasurementError(false, 'you');
+    expect(useLab.getState().takeChanges().some((c) => c.text.includes('measurement error'))).toBe(true);
+  });
+});
+
+describe('lab store assignment mode', () => {
+  it('gates agent batches behind a hypothesis for the open experiment only', async () => {
+    const lab = useLab.getState();
+    lab.openExperiment('pendulum', 'you');
+    lab.setAssignmentMode(true);
+    expect(useLab.getState().hypothesisGate('pendulum')).toMatch(/hypothesis/);
+    await expect(useLab.getState().runSweep('pendulum', 'length', [1, 2], 'agent', { watch: false })).rejects.toThrow(/hypothesis/);
+    await expect(useLab.getState().runRepeats('pendulum', 3, 'agent')).rejects.toThrow(/hypothesis/);
+    await expect(
+      useLab.getState().runOptimization('pendulum', 'length', { measurement: 'period_s', goal: 'min', watch: false }, 'agent'),
+    ).rejects.toThrow(/hypothesis/);
+    expect(() => useLab.getState().runTrial('pendulum', 'agent')).not.toThrow();
+    lab.addNote({ author: 'you', kind: 'hypothesis', text: 'Longer pendulums swing more slowly.', });
+    expect(useLab.getState().hypothesisGate('pendulum')).toBeNull();
+    expect(useLab.getState().hypothesisGate('projectile')).toMatch(/hypothesis/);
+    const sweep = await useLab.getState().runSweep('pendulum', 'length', [1, 2], 'agent', { watch: false });
+    expect(sweep.status).toBe('done');
+    lab.setAssignmentMode(false);
+    expect(useLab.getState().hypothesisGate('projectile')).toBeNull();
+  });
+
+  it('turns agent conclusions into proposals that the person accepts, edits or rejects', () => {
+    const lab = useLab.getState();
+    lab.setAssignmentMode(true);
+    const proposal = lab.addNote({ author: 'agent', kind: 'conclusion', text: 'Period scales with the square root of length.' });
+    expect(proposal.status).toBe('pending');
+    const observation = lab.addNote({ author: 'agent', kind: 'observation', text: 'Ran two trials.' });
+    expect(observation.status).toBeUndefined();
+    const own = lab.addNote({ author: 'you', kind: 'conclusion', text: 'Confirmed.' });
+    expect(own.status).toBeUndefined();
+    lab.takeChanges();
+    lab.resolveProposal(proposal.id, 'rejected');
+    expect(useLab.getState().notebook.find((n) => n.id === proposal.id)?.status).toBe('rejected');
+    const second = lab.addNote({ author: 'agent', kind: 'conclusion', text: 'T grows with sqrt(L).' });
+    lab.resolveProposal(second.id, 'accepted', 'T grows with the square root of L, exponent 0.50.');
+    const stored = useLab.getState().notebook.find((n) => n.id === second.id)!;
+    expect(stored.status).toBe('accepted');
+    expect(stored.edited).toBe(true);
+    expect(stored.text).toContain('0.50');
+    const changes = useLab.getState().takeChanges().map((c) => c.text);
+    expect(changes.some((c) => c.startsWith('rejected the proposed conclusion'))).toBe(true);
+    expect(changes.some((c) => c.includes('accepted the proposed conclusion') && c.includes('after editing'))).toBe(true);
+    lab.setAssignmentMode(false);
+    const direct = lab.addNote({ author: 'agent', kind: 'conclusion', text: 'Normal mode again.' });
+    expect(direct.status).toBeUndefined();
+  });
+});
+
 describe('lab store attribution', () => {
   it('queues the person’s changes for the agent and toasts the agent’s changes for the person', () => {
     const lab = useLab.getState();

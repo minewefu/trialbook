@@ -7,13 +7,13 @@ Lab-wide tools are always registered. Experiment tools are registered when an ex
 replaced when another one opens; their schemas describe that experiment, and their handlers always act
 on whichever experiment is open. Outputs are kept under about 1.4K characters; larger sets are paged.
 
-## Lab-wide tools (9)
+## Lab-wide tools (8)
 
 ### `get_lab_state`
 
 *read-only*
 
-Read the current state of the lab: which experiment is open, its parameters and latest measurements, counts of trials, sweeps, charts and notebook entries, and everything the person changed since your last read. Call this first and whenever you need to catch up.
+Read the current state of the lab: the open experiment with its parameters, ranges and measurements, the latest trial, counts, whether assignment mode or measurement error is on, pending proposals, and everything the person changed since your last read. Call this first and whenever you need to catch up.
 
 ```json
 {
@@ -23,35 +23,11 @@ Read the current state of the lab: which experiment is open, its parameters and 
 }
 ```
 
-### `list_experiments`
-
-*read-only*
-
-List the experiments in the lab. Without an argument you get an overview; pass an experiment id to get its parameters (with units and ranges) and the measurements it produces.
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "experiment": {
-      "type": "string",
-      "enum": [
-        "projectile",
-        "pendulum",
-        "predator_prey"
-      ],
-      "description": "Experiment id to describe in detail."
-    }
-  },
-  "additionalProperties": false
-}
-```
-
 ### `open_experiment`
 
 *makes changes*
 
-Open an experiment so its sliders and tools become active. The experiment-specific tools (set_parameters, run_trial, sweep_parameter, reset_experiment) always act on the open experiment.
+Open an experiment (projectile: Projectile motion; pendulum: Pendulum; predator_prey: Predator and prey) so its sliders and tools become active. The experiment tools always act on the open experiment. Returns its parameters, ranges and guidance.
 
 ```json
 {
@@ -208,7 +184,7 @@ Fit a model to sweep results and draw it over the chart: linear, quadratic, powe
 
 *makes changes*
 
-Write in the shared lab notebook under your own name. Use kind "hypothesis" before testing an idea, "observation" for what a trial or sweep showed, "conclusion" for the answer, and "note" for anything else. The entry records the open experiment and its parameters.
+Write in the shared lab notebook under your own name. Use kind "hypothesis" before testing an idea, "observation" for what a trial or sweep showed, "conclusion" for the answer, and "note" for anything else. In assignment mode a conclusion becomes a proposal the person accepts, edits or rejects. The entry records the open experiment and its parameters.
 
 ```json
 {
@@ -293,7 +269,7 @@ Read the shared lab notebook, newest first, including entries the person wrote. 
 
 *makes changes*
 
-Build a Markdown lab report from all trials, sweeps, charts and notebook entries and download it for the person. Returns a preview of the report.
+Build a Markdown lab report from all trials, sweeps, charts and notebook entries, including a "who did what" section, and download it for the person. Returns a preview and the attribution counts.
 
 ```json
 {
@@ -303,7 +279,7 @@ Build a Markdown lab report from all trials, sweeps, charts and notebook entries
 }
 ```
 
-## Projectile motion tools (5)
+## Projectile motion tools (6)
 
 Launch a ball and measure where it lands. Vary speed, angle, launch height, gravity and air drag.
 
@@ -412,7 +388,7 @@ Run the Projectile motion experiment once and measure it. Uses the current param
 
 *makes changes*
 
-Run a series of Projectile motion trials while one parameter changes and the others stay at their current values. Give from, to and steps for an even spread, or an explicit values list (up to 50). The person watches a progress bar and can cancel. Returns per-value measurements plus the minimum and maximum of each measurement.
+Run a series of Projectile motion trials while one parameter changes and the others stay at their current values. Give from, to and steps for an even spread, or an explicit values list (up to 50 trials). Add repeats (with measurement error on) to get error bars. The person watches a progress bar and can cancel. Returns per-value measurements plus the minimum and maximum of each measurement.
 
 ```json
 {
@@ -454,6 +430,16 @@ Run a series of Projectile motion trials while one parameter changes and the oth
       "maxItems": 50,
       "description": "Explicit list of values to try instead of from, to and steps."
     },
+    "repeats": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Trials per value, for error bars. Needs measurement error on. Default 1."
+    },
+    "noise": {
+      "type": "boolean",
+      "description": "Apply synthetic measurement error to these readings. Default: the lab setting."
+    },
     "watch": {
       "type": "boolean",
       "description": "Animate each trial briefly so the person can watch. Default true."
@@ -466,6 +452,43 @@ Run a series of Projectile motion trials while one parameter changes and the oth
   },
   "required": [
     "parameter"
+  ],
+  "additionalProperties": false
+}
+```
+
+### `run_repeats`
+
+*makes changes*
+
+Run the Projectile motion experiment several times at the current parameters with synthetic measurement error, and return the mean, standard deviation and standard error of every measurement. Use it to quantify uncertainty before comparing two settings.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "n": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 20,
+      "description": "How many repeats, 2 to 20."
+    },
+    "noise": {
+      "type": "boolean",
+      "description": "Apply synthetic measurement error. Default true; false makes every repeat identical."
+    },
+    "watch": {
+      "type": "boolean",
+      "description": "Animate each repeat briefly. Default false."
+    },
+    "label": {
+      "type": "string",
+      "maxLength": 60,
+      "description": "Optional short label."
+    }
+  },
+  "required": [
+    "n"
   ],
   "additionalProperties": false
 }
@@ -555,7 +578,7 @@ Reset every Projectile motion parameter to its default value. Trials, charts and
 }
 ```
 
-## Pendulum tools (5)
+## Pendulum tools (6)
 
 Release a pendulum and time its swing. Vary length, amplitude, gravity and damping, and compare with the small-angle formula.
 
@@ -652,7 +675,7 @@ Run the Pendulum experiment once and measure it. Uses the current parameters; an
 
 *makes changes*
 
-Run a series of Pendulum trials while one parameter changes and the others stay at their current values. Give from, to and steps for an even spread, or an explicit values list (up to 50). The person watches a progress bar and can cancel. Returns per-value measurements plus the minimum and maximum of each measurement.
+Run a series of Pendulum trials while one parameter changes and the others stay at their current values. Give from, to and steps for an even spread, or an explicit values list (up to 50 trials). Add repeats (with measurement error on) to get error bars. The person watches a progress bar and can cancel. Returns per-value measurements plus the minimum and maximum of each measurement.
 
 ```json
 {
@@ -693,6 +716,16 @@ Run a series of Pendulum trials while one parameter changes and the others stay 
       "maxItems": 50,
       "description": "Explicit list of values to try instead of from, to and steps."
     },
+    "repeats": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Trials per value, for error bars. Needs measurement error on. Default 1."
+    },
+    "noise": {
+      "type": "boolean",
+      "description": "Apply synthetic measurement error to these readings. Default: the lab setting."
+    },
     "watch": {
       "type": "boolean",
       "description": "Animate each trial briefly so the person can watch. Default true."
@@ -705,6 +738,43 @@ Run a series of Pendulum trials while one parameter changes and the others stay 
   },
   "required": [
     "parameter"
+  ],
+  "additionalProperties": false
+}
+```
+
+### `run_repeats`
+
+*makes changes*
+
+Run the Pendulum experiment several times at the current parameters with synthetic measurement error, and return the mean, standard deviation and standard error of every measurement. Use it to quantify uncertainty before comparing two settings.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "n": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 20,
+      "description": "How many repeats, 2 to 20."
+    },
+    "noise": {
+      "type": "boolean",
+      "description": "Apply synthetic measurement error. Default true; false makes every repeat identical."
+    },
+    "watch": {
+      "type": "boolean",
+      "description": "Animate each repeat briefly. Default false."
+    },
+    "label": {
+      "type": "string",
+      "maxLength": 60,
+      "description": "Optional short label."
+    }
+  },
+  "required": [
+    "n"
   ],
   "additionalProperties": false
 }
@@ -794,7 +864,7 @@ Reset every Pendulum parameter to its default value. Trials, charts and notebook
 }
 ```
 
-## Predator and prey tools (5)
+## Predator and prey tools (6)
 
 Watch two populations chase each other through the Lotka–Volterra cycle. Vary growth, predation, efficiency, death rate and the starting numbers.
 
@@ -921,7 +991,7 @@ Run the Predator and prey experiment once and measure it. Uses the current param
 
 *makes changes*
 
-Run a series of Predator and prey trials while one parameter changes and the others stay at their current values. Give from, to and steps for an even spread, or an explicit values list (up to 50). The person watches a progress bar and can cancel. Returns per-value measurements plus the minimum and maximum of each measurement.
+Run a series of Predator and prey trials while one parameter changes and the others stay at their current values. Give from, to and steps for an even spread, or an explicit values list (up to 50 trials). Add repeats (with measurement error on) to get error bars. The person watches a progress bar and can cancel. Returns per-value measurements plus the minimum and maximum of each measurement.
 
 ```json
 {
@@ -965,6 +1035,16 @@ Run a series of Predator and prey trials while one parameter changes and the oth
       "maxItems": 50,
       "description": "Explicit list of values to try instead of from, to and steps."
     },
+    "repeats": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Trials per value, for error bars. Needs measurement error on. Default 1."
+    },
+    "noise": {
+      "type": "boolean",
+      "description": "Apply synthetic measurement error to these readings. Default: the lab setting."
+    },
     "watch": {
       "type": "boolean",
       "description": "Animate each trial briefly so the person can watch. Default true."
@@ -977,6 +1057,43 @@ Run a series of Predator and prey trials while one parameter changes and the oth
   },
   "required": [
     "parameter"
+  ],
+  "additionalProperties": false
+}
+```
+
+### `run_repeats`
+
+*makes changes*
+
+Run the Predator and prey experiment several times at the current parameters with synthetic measurement error, and return the mean, standard deviation and standard error of every measurement. Use it to quantify uncertainty before comparing two settings.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "n": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 20,
+      "description": "How many repeats, 2 to 20."
+    },
+    "noise": {
+      "type": "boolean",
+      "description": "Apply synthetic measurement error. Default true; false makes every repeat identical."
+    },
+    "watch": {
+      "type": "boolean",
+      "description": "Animate each repeat briefly. Default false."
+    },
+    "label": {
+      "type": "string",
+      "maxLength": 60,
+      "description": "Optional short label."
+    }
+  },
+  "required": [
+    "n"
   ],
   "additionalProperties": false
 }

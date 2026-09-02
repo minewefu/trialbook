@@ -63,6 +63,17 @@ export const pendulum: ExperimentDef = {
     { key: 'decay_time_s', label: 'Decay time', unit: 's', description: 'Time for the swing to shrink to 1/e of its starting amplitude. Empty without damping.' },
   ],
   run: runPendulum,
+  noise: {
+    period_s: { resolution: 0.01, relative: 0.005 },
+    max_speed_mps: { resolution: 0.02, relative: 0.01 },
+    decay_time_s: { resolution: 0.1, relative: 0.02 },
+  },
+  derive: (m) => ({
+    ...m,
+    period_deviation_pct: Number.isFinite(m.period_s)
+      ? ((m.period_s - m.small_angle_period_s) / m.small_angle_period_s) * 100
+      : Number.NaN,
+  }),
   agentGuidance:
     'For small angles the period is 2π√(L/g): it depends on length and gravity but not on amplitude. At large angles the period grows, about 18% longer at 90 degrees. Damping shrinks the swing but barely changes the period.',
 };

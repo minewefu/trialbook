@@ -2,7 +2,7 @@ import { clampInt, fitToBudget, linspace, round, roundAll } from '../lib/format'
 import type { ToolDef } from '../lib/webmcp';
 import { mustDef } from '../sims';
 import { describeParam, formatMeasurements, type ExperimentDef, type ParamSpec } from '../sims/types';
-import { MAX_SWEEP_VALUES, useLab, type Trial } from '../store';
+import { MAX_REPEATS, MAX_SWEEP_VALUES, useLab, type Trial } from '../store';
 import { objectSchema } from './global';
 
 const MAX_SWEEP_ROWS = 8;
@@ -43,7 +43,23 @@ function compose(parts: string[], limit = 500): string {
   return out;
 }
 
-/** Builds the four per-experiment tools. Schemas describe `def`; handlers read the open experiment at call time. */
+function statistics(def: ExperimentDef, trials: Trial[]) {
+  const stats: Record<string, { mean: number | null; sd: number | null; sem: number | null }> = {};
+  for (const m of def.measurements) {
+    const values = trials.map((t) => t.measurements[m.key]).filter((v) => Number.isFinite(v));
+    if (values.length === 0) {
+      stats[m.key] = { mean: null, sd: null, sem: null };
+      continue;
+    }
+    const mean = values.reduce((s, v) => s + v, 0) / values.length;
+    const variance = values.length > 1 ? values.reduce((s, v) => s + (v - mean) ** 2, 0) / (values.length - 1) : 0;
+    const sd = Math.sqrt(variance);
+    stats[m.key] = { mean: round(mean, 5), sd: round(sd, 4), sem: round(sd / Math.sqrt(values.length), 4) };
+  }
+  return stats;
+}
+
+/** Builds the per-experiment tools. Schemas describe `def`; handlers read the open experiment at call time. */
 export function experimentTools(def: ExperimentDef): ToolDef[] {
   const props = paramProperties(def);
   const paramKeys = def.params.map((p) => p.key);
@@ -94,6 +110,7 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
           experiment: d.id,
           parameters: trial.params,
           measurements: roundAll(trial.measurements, 4),
+          ...(trial.noisy ? { measurement_error: 'on (synthetic instrument noise applied to the readings)' } : {}),
           summary: formatMeasurements(d, trial.measurements),
           hint: 'Record what you observed with notebook_add_entry, or explore a range with sweep_parameter.',
         };
@@ -101,7 +118,7 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
     },
     {
       name: 'sweep_parameter',
-      description: `Run a series of ${def.title} trials while one parameter changes and the others stay at their current values. Give from, to and steps for an even spread, or an explicit values list (up to ${MAX_SWEEP_VALUES}). The person watches a progress bar and can cancel. Returns per-value measurements plus the minimum and maximum of each measurement.`,
+      description: `Run a series of ${def.title} trials while one parameter changes and the others stay at their current values. Give from, to and steps for an even spread, or an explicit values list (up to ${MAX_SWEEP_VALUES} trials). Add repeats (with measurement error on) to get error bars. The person watches a progress bar and can cancel. Returns per-value measurements plus the minimum and maximum of each measurement.`,
       inputSchema: objectSchema(
         {
           parameter: { type: 'string', enum: paramKeys, description: 'Which parameter to vary.' },
@@ -119,6 +136,8 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
             maxItems: MAX_SWEEP_VALUES,
             description: 'Explicit list of values to try instead of from, to and steps.',
           },
+          repeats: { type: 'integer', minimum: 1, maximum: 10, description: 'Trials per value, for error bars. Needs measurement error on. Default 1.' },
+          noise: { type: 'boolean', description: 'Apply synthetic measurement error to these readings. Default: the lab setting.' },
           watch: { type: 'boolean', description: 'Animate each trial briefly so the person can watch. Default true.' },
           label: { type: 'string', maxLength: 60, description: 'Optional short label for the sweep.' },
         },
@@ -128,7 +147,17 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
         ? { parameter: sweepExample.key, from: sweepExample.min, to: sweepExample.max, steps: 6 }
         : { parameter: paramKeys[0] },
       execute: async (
-        input: { parameter: string; from?: number; to?: number; steps?: number; values?: unknown[]; watch?: boolean; label?: string },
+        input: {
+          parameter: string;
+          from?: number;
+          to?: number;
+          steps?: number;
+          values?: unknown[];
+          repeats?: number;
+          noise?: boolean;
+          watch?: boolean;
+          label?: string;
+        },
         opts?: { signal?: AbortSignal },
       ) => {
         const d = activeDef();
@@ -147,9 +176,12 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
           }
           values = linspace(from, to, clampInt(input.steps, 2, MAX_SWEEP_VALUES, 10));
         }
+        const repeats = clampInt(input.repeats, 1, 10, 1);
         const sweep = await useLab.getState().runSweep(d.id, spec.key, values, 'agent', {
           watch: input.watch !== false,
           signal: opts?.signal,
+          repeats,
+          ...(typeof input.noise === 'boolean' ? { noise: input.noise } : {}),
           ...(typeof input.label === 'string' ? { label: input.label } : {}),
         });
         const s = useLab.getState();
@@ -175,6 +207,7 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
           };
         }
         const rows = trials.map((t) => ({ [spec.key]: t.params[spec.key], ...roundAll(t.measurements, 4) }));
+        const noisy = trials.some((t) => t.noisy);
         const build = (n: number) => ({
           sweep_id: sweep.id,
           experiment: d.id,
@@ -183,12 +216,53 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
           cancelled: sweep.status === 'cancelled',
           ...(sweep.error ? { error: sweep.error } : {}),
           count: trials.length,
+          ...(repeats > 1 ? { repeats_per_value: repeats } : {}),
+          ...(noisy ? { measurement_error: 'on' } : {}),
           summary,
           rows: rows.slice(0, n),
           ...(rows.length > n ? { more_rows: `get_results with sweep_id ${sweep.id}` } : {}),
-          hint: `Call plot_results with sweep_id "${sweep.id}" and a measurement key to chart it, then notebook_add_entry to record the conclusion.`,
+          hint: `Call plot_results with sweep_id "${sweep.id}" and a measurement key to chart it${repeats > 1 ? ' with error bars' : ''}, fit_model to find the law, then notebook_add_entry to record the conclusion.`,
         });
         return fitToBudget(build, Math.min(rows.length, MAX_SWEEP_ROWS), 1350, Math.min(rows.length, 2)).value;
+      },
+    },
+    {
+      name: 'run_repeats',
+      description: `Run the ${def.title} experiment several times at the current parameters with synthetic measurement error, and return the mean, standard deviation and standard error of every measurement. Use it to quantify uncertainty before comparing two settings.`,
+      inputSchema: objectSchema(
+        {
+          n: { type: 'integer', minimum: 2, maximum: MAX_REPEATS, description: `How many repeats, 2 to ${MAX_REPEATS}.` },
+          noise: { type: 'boolean', description: 'Apply synthetic measurement error. Default true; false makes every repeat identical.' },
+          watch: { type: 'boolean', description: 'Animate each repeat briefly. Default false.' },
+          label: { type: 'string', maxLength: 60, description: 'Optional short label.' },
+        },
+        ['n'],
+      ),
+      example: { n: 10 },
+      execute: async (input: { n: number; noise?: boolean; watch?: boolean; label?: string }, opts?: { signal?: AbortSignal }) => {
+        const d = activeDef();
+        const n = clampInt(input.n, 2, MAX_REPEATS, 10);
+        const noise = input.noise !== false;
+        const sweep = await useLab.getState().runRepeats(d.id, n, 'agent', {
+          noise,
+          watch: input.watch === true,
+          signal: opts?.signal,
+          ...(typeof input.label === 'string' ? { label: input.label } : {}),
+        });
+        const s = useLab.getState();
+        const trials = sweep.trialIds.map((id) => s.trials.find((t) => t.id === id)).filter((t): t is Trial => Boolean(t));
+        return {
+          sweep_id: sweep.id,
+          experiment: d.id,
+          status: sweep.status,
+          cancelled: sweep.status === 'cancelled',
+          n: trials.length,
+          measurement_error: noise ? 'on (synthetic instrument noise)' : 'off, so every repeat is identical',
+          parameters: s.paramsFor(d.id),
+          statistics: statistics(d, trials),
+          trial_ids: trials.length > 2 ? [trials[0].id, `… ${trials.length - 2} more`, trials[trials.length - 1].id] : trials.map((t) => t.id),
+          hint: 'Report a value as mean ± standard error. Two settings differ meaningfully when their means are several standard errors apart.',
+        };
       },
     },
     {
@@ -254,7 +328,9 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
           tolerance: round(result.tolerance, 5),
           trials_used: result.trialsUsed,
           converged: result.converged,
-          ...(result.atBound ? { at_bound: result.atBound, note: `The best value sits at the ${result.atBound} end of the range, so the true optimum may lie outside it or the response is monotonic.` } : {}),
+          ...(result.atBound
+            ? { at_bound: result.atBound, note: `The best value sits at the ${result.atBound} end of the range, so the true optimum may lie outside it or the response is monotonic.` }
+            : {}),
           caveat: 'Golden-section search assumes one peak or valley in the range.',
           hint: `plot_results with sweep_id "${result.sweep.id}" shows every point tried; record the optimum with notebook_add_entry.`,
         };

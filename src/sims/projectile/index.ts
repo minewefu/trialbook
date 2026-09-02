@@ -73,6 +73,12 @@ export const projectile: ExperimentDef = {
     { key: 'impact_speed_mps', label: 'Impact speed', unit: 'm/s', description: 'Speed at the moment of landing.' },
   ],
   run: runProjectile,
+  noise: {
+    range_m: { resolution: 0.05, relative: 0.005 },
+    flight_time_s: { resolution: 0.01, relative: 0.005 },
+    max_height_m: { resolution: 0.05, relative: 0.01 },
+    impact_speed_mps: { resolution: 0.05, relative: 0.01 },
+  },
   agentGuidance:
     'Without drag the range from ground level is v² sin(2θ)/g, so 45 degrees is best. Drag shortens the range and lowers the best angle.',
 };

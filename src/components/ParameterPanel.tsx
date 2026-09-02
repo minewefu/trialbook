@@ -10,6 +10,8 @@ export function ParameterPanel() {
   const resetParams = useLab((s) => s.resetParams);
   const highlights = useLab((s) => s.highlights);
   const busy = useLab((s) => s.activeSweepId !== null);
+  const measurementError = useLab((s) => s.measurementError);
+  const setMeasurementError = useLab((s) => s.setMeasurementError);
   const [, tick] = useState(0);
 
   // Re-render once the agent's highlight has expired so the glow fades on time.
@@ -42,6 +44,13 @@ export function ParameterPanel() {
           Reset to defaults
         </button>
       </header>
+      <label
+        className="toggle small mode-toggle"
+        title="Adds a synthetic reading resolution and a small relative error to every new measurement, so repeats scatter and error bars mean something. The motion itself stays exact."
+      >
+        <input type="checkbox" checked={measurementError} onChange={(e) => setMeasurementError(e.target.checked, 'you')} disabled={busy} />{' '}
+        Simulate measurement error on new readings <span className="muted">(synthetic noise)</span>
+      </label>
       <div className="params">
         {def.params.map((spec) => {
           const hot = (highlights[spec.key] ?? 0) > now;

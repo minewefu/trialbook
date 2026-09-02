@@ -95,6 +95,15 @@ export const predatorPrey: ExperimentDef = {
     { key: 'mean_predators', label: 'Mean predators', unit: 'animals', description: 'Time-averaged predator population.' },
   ],
   run: runPredatorPrey,
+  noise: {
+    peak_prey: { integer: true, relative: 0.03 },
+    min_prey: { integer: true, relative: 0.03 },
+    peak_predators: { integer: true, relative: 0.03 },
+    min_predators: { integer: true, relative: 0.03 },
+    oscillation_period: { resolution: 0.1, relative: 0.02 },
+    mean_prey: { resolution: 0.1, relative: 0.02 },
+    mean_predators: { resolution: 0.1, relative: 0.02 },
+  },
   agentGuidance:
     'Populations cycle; predators peak after prey. Time averages equal the equilibrium: prey = death / efficiency, predators = growth / predation, whatever the start.',
 };

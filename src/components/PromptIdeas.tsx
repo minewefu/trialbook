@@ -4,25 +4,27 @@ import { useLab } from '../store';
 
 const PROMPTS: Record<ExperimentId, string[]> = {
   projectile: [
-    'Find the launch angle that gives the longest range with heavy drag. Sweep the angle from 20 to 70 degrees in 5-degree steps, plot range against angle, and write your conclusion in the notebook.',
-    'Run one trial with the current settings, then predict what changes on the Moon and test it.',
+    'Find the launch angle that gives the longest range with heavy drag, to within 0.1 degree. Then plot every point you tried and write your conclusion in the notebook.',
+    'Sweep the launch speed from 10 to 100 m/s without drag, fit a power law to the range, and tell me the exponent and what it means.',
+    'Turn on measurement error is my job; once I have, repeat the current trial 10 times and report the range as mean ± standard error.',
     'What did I change on the sliders? Predict the effect, then run a trial to check.',
-    'Does launch height change the best angle? Write a hypothesis first, design a small experiment, run it, and record what you found.',
   ],
   pendulum: [
+    'Sweep the length from 0.25 to 4 m in 8 steps, fit a power law to the period, and tell me the exponent. Does it match 2π√(L/g)?',
     'Does the period depend on the release angle? Sweep the angle from 5 to 170 degrees, plot the period, and compare it with the small-angle formula in the notebook.',
-    'Check that the period scales with the square root of the length: sweep the length from 0.25 m to 4 m and plot the period.',
-    'Add light damping and run a trial. Does the period change? Record what you measured.',
+    'With measurement error on, sweep the length with 3 repeats per value, plot the period with error bars, and fit the law to the means.',
     'What did I change on the sliders? Predict the effect on the period, then run a trial to check.',
   ],
   predator_prey: [
-    'Run a trial with the defaults, then plot how the oscillation period changes as the predator death rate rises.',
-    'Write a hypothesis about what happens to the prey minimum when predation doubles, then test it with a sweep.',
+    'Sweep the predator death rate from 0.3 to 1.2 and fit a line to the mean prey population. What does the slope tell you about the equilibrium?',
+    'Write a hypothesis about what happens to the prey minimum when predation doubles, then test it with a sweep and plot the result.',
+    'Find the predator death rate that maximises the cycle length within the allowed range, then explain the trend.',
   ],
 };
 
 export function PromptIdeas() {
   const experiment = useLab((s) => s.experiment);
+  const assignmentMode = useLab((s) => s.assignmentMode);
   const prompts = experiment ? PROMPTS[experiment] : PROMPTS.projectile;
   const [copied, setCopied] = useState<number | null>(null);
   const copy = async (index: number) => {
@@ -39,6 +41,12 @@ export function PromptIdeas() {
       <header className="card-head">
         <h2>Try asking your agent</h2>
       </header>
+      {assignmentMode && (
+        <p className="muted small">
+          Assignment mode is on: write your hypothesis in the notebook first, then ask. Your agent's conclusions will
+          arrive as proposals for you to accept or reject.
+        </p>
+      )}
       <ul className="prompts">
         {prompts.map((prompt, index) => (
           <li key={index}>
