@@ -39,11 +39,31 @@ the agent uses, so you can exercise the tools without an agent.
 
 ## Tools
 
+Lab-wide tools, always registered:
+
 | Tool | Hint | What it does |
 |---|---|---|
-| `get_lab_state` | read-only | Which experiment is open, its parameters and latest measurements, notebook and result counts, and what the person changed since the agent last looked. |
+| `get_lab_state` | read-only | Open experiment, parameters, latest measurements, counts, and what the person changed since the agent last looked. |
+| `list_experiments` | read-only | Overview of experiments, or one experiment's parameters with units and ranges. |
+| `open_experiment` | | Switch experiment; swaps the experiment tool group. |
+| `get_results` | read-only | Paged trials with parameters and measurements, by sweep or by id. |
+| `plot_results` | | Add a chart card: a measurement against a parameter, a measurement, or the trial number. |
+| `notebook_add_entry` | | Write a hypothesis, observation, conclusion or note under the agent's own name. |
+| `notebook_read` | read-only, untrusted content | Read the shared notebook, including what the person wrote. |
+| `export_report` | | Build and download a Markdown lab report. |
 
-More tools land with each experiment. The full plan is in [`docs/BUILD_PROMPT.md`](docs/BUILD_PROMPT.md).
+Experiment tools, registered when an experiment opens and replaced when it changes. Their schemas describe the
+open experiment; their handlers always act on whichever experiment is open, so a stale schema still behaves.
+
+| Tool | What it does |
+|---|---|
+| `set_parameters` | Change parameters without running. Strict validation with the allowed range in every error. |
+| `run_trial` | Run once, animate it for the person, return the measurements. |
+| `sweep_parameter` | Run up to 50 trials across one parameter with a progress bar, cancellation, and per-measurement min and max. |
+| `reset_experiment` | Back to defaults. |
+
+Every tool output stays under about 1.4K characters; larger result sets are paged. The full plan is in
+[`docs/BUILD_PROMPT.md`](docs/BUILD_PROMPT.md).
 
 ## How WebMCP is used
 

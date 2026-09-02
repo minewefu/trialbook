@@ -1,0 +1,78 @@
+import type { ExperimentDef } from '../types';
+import { runProjectile } from './engine';
+
+export const projectile: ExperimentDef = {
+  id: 'projectile',
+  title: 'Projectile motion',
+  summary: 'Launch a ball and measure where it lands. Vary speed, angle, launch height, gravity and air drag.',
+  seriesKeys: ['t', 'x', 'y'],
+  params: [
+    {
+      kind: 'number',
+      key: 'speed',
+      label: 'Launch speed',
+      unit: 'm/s',
+      min: 1,
+      max: 200,
+      step: 1,
+      default: 30,
+      description: 'Launch speed in metres per second, 1 to 200.',
+    },
+    {
+      kind: 'number',
+      key: 'angle',
+      label: 'Launch angle',
+      unit: 'deg',
+      min: 0,
+      max: 90,
+      step: 1,
+      default: 45,
+      description: 'Launch angle above the ground in degrees, 0 (flat) to 90 (straight up).',
+    },
+    {
+      kind: 'number',
+      key: 'height',
+      label: 'Launch height',
+      unit: 'm',
+      min: 0,
+      max: 100,
+      step: 1,
+      default: 0,
+      description: 'Height of the launch point above the ground in metres, 0 to 100.',
+    },
+    {
+      kind: 'number',
+      key: 'gravity',
+      label: 'Gravity',
+      unit: 'm/s²',
+      min: 0.1,
+      max: 50,
+      step: 0.01,
+      default: 9.81,
+      description: 'Gravitational acceleration in m/s². Earth 9.81, Moon 1.62, Mars 3.71, Jupiter 24.8.',
+      presets: [
+        { label: 'Earth', value: 9.81 },
+        { label: 'Moon', value: 1.62 },
+        { label: 'Mars', value: 3.71 },
+        { label: 'Jupiter', value: 24.8 },
+      ],
+    },
+    {
+      kind: 'enum',
+      key: 'drag',
+      label: 'Air drag',
+      options: ['none', 'light', 'heavy'],
+      default: 'none',
+      description: 'Air resistance: none (vacuum), light (like a baseball), heavy (like a foam ball).',
+    },
+  ],
+  measurements: [
+    { key: 'range_m', label: 'Range', unit: 'm', description: 'Horizontal distance travelled before hitting the ground.' },
+    { key: 'flight_time_s', label: 'Flight time', unit: 's', description: 'Time from launch to landing.' },
+    { key: 'max_height_m', label: 'Max height', unit: 'm', description: 'Highest point above the ground.' },
+    { key: 'impact_speed_mps', label: 'Impact speed', unit: 'm/s', description: 'Speed at the moment of landing.' },
+  ],
+  run: runProjectile,
+  agentGuidance:
+    'Without drag the range from ground level is v² sin(2θ)/g, so 45 degrees is best. Drag shortens the range and lowers the best angle.',
+};
