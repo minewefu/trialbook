@@ -9,6 +9,7 @@ import { SimStage } from './components/SimStage';
 import { StatusPill } from './components/StatusPill';
 import { Toasts } from './components/Toasts';
 import { ToolsPanel } from './components/ToolsPanel';
+import { Walkthrough } from './components/Walkthrough';
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
         <StatusPill />
       </header>
 
+      <Walkthrough />
       <ExperimentTabs />
 
       <main className="layout">

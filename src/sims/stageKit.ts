@@ -98,14 +98,17 @@ export function useCanvasLoop(
       if (draw(ctx, w, height)) raf = requestAnimationFrame(frame);
     };
     frame();
-    const observer = new ResizeObserver(() => {
+    const redraw = () => {
       cancelAnimationFrame(raf);
       frame();
-    });
+    };
+    const observer = new ResizeObserver(redraw);
     observer.observe(host);
+    window.addEventListener('resize', redraw);
     return () => {
       cancelAnimationFrame(raf);
       observer.disconnect();
+      window.removeEventListener('resize', redraw);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);

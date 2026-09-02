@@ -9,15 +9,15 @@ export function StatusPill() {
 
   if (!supported) {
     return (
-      <span className="pill pill-off" title="This browser does not expose WebMCP. See Connect your agent.">
-        Agent tools: not detected in this browser
-      </span>
+      <a className="pill pill-off" href="#connect" title="This browser does not expose WebMCP. See how to connect an agent.">
+        Agent tools: not detected in this browser · how to connect
+      </a>
     );
   }
   if (total === 0) return <span className="pill pill-warn">Agent tools: connecting</span>;
   if (inBrowser === total) {
     return (
-      <span className="pill pill-on">
+      <span className="pill pill-on" title="Every tool below is registered with this browser's WebMCP.">
         Agent tools: connected · {total} registered
       </span>
     );

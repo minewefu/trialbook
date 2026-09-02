@@ -1,6 +1,6 @@
 export function SetupPanel() {
   return (
-    <section className="card">
+    <section className="card" id="connect">
       <header className="card-head">
         <h2>Connect your agent</h2>
       </header>

@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import { useRegistryVersion } from '../hooks/useRegistry';
 import { listTools, runTool, type ToolEntry } from '../lib/webmcp';
+import { EXPERIMENTS } from '../sims';
+import { useLab } from '../store';
 
 export function ToolsPanel() {
   useRegistryVersion();
+  const experiment = useLab((s) => s.experiment);
   const tools = listTools();
+  const global = tools.filter((t) => t.group === 'global').length;
+  const scoped = tools.length - global;
+  const title = experiment ? EXPERIMENTS[experiment]?.title : undefined;
   return (
     <section className="card">
       <header className="card-head">
@@ -12,8 +18,9 @@ export function ToolsPanel() {
         <span className="muted small">{tools.length} live</span>
       </header>
       <p className="muted small">
-        Registered through <code>document.modelContext.registerTool</code>. You can run any of them here
-        without an agent; the call goes through the same code path.
+        {global} lab-wide{scoped > 0 && title ? ` and ${scoped} for ${title}` : ''}, registered through{' '}
+        <code>document.modelContext.registerTool</code>. Click a tool to read what it does and run it yourself; the
+        call takes the same path the agent uses.
       </p>
       {tools.length === 0 ? (
         <p className="muted small">No tools registered yet.</p>
@@ -55,7 +62,7 @@ function ToolRow({ entry }: { entry: ToolEntry }) {
   }
 
   return (
-    <li className="tool">
+    <li className={`tool ${open ? 'open' : ''}`}>
       <div className="tool-row">
         <button className="linkish" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
           <code className="tool-name">{def.name}</code>
@@ -71,9 +78,9 @@ function ToolRow({ entry }: { entry: ToolEntry }) {
           </span>
         )}
       </div>
-      <p className="muted small">{def.description}</p>
       {open && (
         <div className="runner">
+          <p className="muted small">{def.description}</p>
           <label className="small" htmlFor={`input-${def.name}`}>
             Input (JSON)
           </label>
@@ -85,7 +92,7 @@ function ToolRow({ entry }: { entry: ToolEntry }) {
             spellCheck={false}
           />
           <div className="row">
-            <button className="btn" onClick={run} disabled={busy}>
+            <button className="btn small" onClick={run} disabled={busy}>
               {busy ? 'Running' : 'Run tool'}
             </button>
             <details className="small">
