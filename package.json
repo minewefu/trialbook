@@ -1,0 +1,34 @@
+{
+  "name": "trialbook",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "An agent-native science lab: run experiments with your AI agent through WebMCP and keep the lab notebook together.",
+  "homepage": "https://minewefu.github.io/trialbook/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/minewefu/trialbook.git"
+  },
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}
