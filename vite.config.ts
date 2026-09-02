@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   base: '/trialbook/',
-  server: { port: 5173, strictPort: true },
+  // Honour a PORT from the environment (used by preview tooling); default to Vite's usual port.
+  server: { port: Number(process.env.PORT) || 5173, strictPort: false },
   build: { sourcemap: true },
 });
