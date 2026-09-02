@@ -9,7 +9,9 @@ export function ActivityLog() {
     <section className="card">
       <header className="card-head">
         <h2>Activity</h2>
-        <span className="muted small">{all.length ? `${all.length} calls` : 'no calls yet'}</span>
+        <span className="muted small">
+          {all.length === 0 ? 'no calls yet' : all.length === 1 ? '1 call' : `${all.length} calls`}
+        </span>
       </header>
       {items.length === 0 ? (
         <p className="muted small">Tool calls from your agent and from the Tools panel appear here, newest first.</p>
