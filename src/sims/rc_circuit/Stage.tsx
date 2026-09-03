@@ -250,13 +250,12 @@ export function RcStage({ trial, ghosts, watch, replayNonce }: StageProps) {
       ctx.beginPath();
       ctx.arc(sx(tShow), sy(vNow), 9, 0, Math.PI * 2);
       ctx.stroke();
-      // Charging curves start low on the left, discharging ones start high, so park the panel in the empty corner.
-      const width = 210;
-      const panelX = mode === 'charge' ? right.x + 6 : right.x + right.w - width - 6;
       drawReadout(
         ctx,
-        panelX,
-        right.y + 6,
+        w,
+        h,
+        pointer.x,
+        pointer.y,
         [
           `t       ${fixed(tShow, 2)} s`,
           `voltage ${fixed(vNow, 3)} V`,
@@ -265,7 +264,7 @@ export function RcStage({ trial, ghosts, watch, replayNonce }: StageProps) {
           `energy  ${fixed(0.5 * capacitance * 1e-6 * vNow * vNow * 1e3, 4)} mJ`,
         ],
         c,
-        width,
+        210,
       );
     }
     return progress < 1;

@@ -215,14 +215,15 @@ export function PredatorPreyStage({ trial, ghosts, watch, replayNonce }: StagePr
       ctx.beginPath();
       ctx.arc(tx(tShow), ty(predNow), 4, 0, Math.PI * 2);
       ctx.fill();
-      const width = 190;
       drawReadout(
         ctx,
-        left.x + left.w - width - 6,
-        left.y + 6,
+        w,
+        h,
+        pointer.x,
+        pointer.y,
         [`season    ${fixed(tShow, 2)}`, `prey      ${fixed(preyNow, 2)}`, `predators ${fixed(predNow, 2)}`],
         c,
-        width,
+        190,
       );
     }
     return progress < 1;

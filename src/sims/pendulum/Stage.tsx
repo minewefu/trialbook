@@ -178,11 +178,12 @@ export function PendulumStage({ trial, ghosts, watch, replayNonce }: StageProps)
       ctx.beginPath();
       ctx.arc(sx(tShow), sy(angle), 6, 0, Math.PI * 2);
       ctx.stroke();
-      const width = 230;
       drawReadout(
         ctx,
-        right.x + right.w - width - 6,
-        right.y + 6,
+        w,
+        h,
+        pointer.x,
+        pointer.y,
         [
           `t          ${fixed(tShow, 2)} s`,
           `angle      ${fixed(angle, 1)}°`,
@@ -191,7 +192,7 @@ export function PendulumStage({ trial, ghosts, watch, replayNonce }: StageProps)
           `height     ${fixed(L * (1 - Math.cos(angle * TO_RAD)), 3)} m`,
         ],
         c,
-        width,
+        230,
       );
     }
     return progress < 1;

@@ -247,7 +247,7 @@ export function ProjectileStage({ trial, ghosts, watch, replayNonce }: StageProp
       ctx.fillText(`zoom ${round(view.zoom, 3)}× · scroll to zoom, drag to pan`, plot.x + 6, plot.y + plot.h - 16);
     }
 
-    if (hovered >= 0) {
+    if (hovered >= 0 && pointer) {
       const sr = trial.series;
       const a = sr[Math.max(0, hovered - 1)];
       const b = sr[Math.min(sr.length - 1, hovered + 1)];
@@ -256,8 +256,10 @@ export function ProjectileStage({ trial, ghosts, watch, replayNonce }: StageProp
       const vy = (b.y - a.y) / dt;
       drawReadout(
         ctx,
-        plot.x + 8,
-        plot.y + 8,
+        w,
+        h,
+        pointer.x,
+        pointer.y,
         [
           `t      ${fixed(sr[hovered].t, 2)} s`,
           `x, y   ${fixed(sr[hovered].x, 2)} m, ${fixed(sr[hovered].y, 2)} m`,

@@ -129,16 +129,30 @@ export function fixed(value: number, decimals: number): string {
 }
 
 /**
- * A readout panel anchored at a fixed corner with a fixed width and monospace digits, so the values
- * update in place instead of the box chasing the pointer and resizing with every digit.
+ * A readout that follows the pointer without jumping: fixed width and monospace digits so it never
+ * resizes, vertically centred on the cursor and slid (not mirrored) to stay inside the canvas, with a
+ * single flip to the left only when it would run off the right edge.
  */
-export function drawReadout(ctx: CanvasRenderingContext2D, x: number, y: number, lines: string[], c: Colors, width: number): void {
+export function drawReadout(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  pointerX: number,
+  pointerY: number,
+  lines: string[],
+  c: Colors,
+  width: number,
+): void {
   ctx.save();
   const mono = cssVar('--mono', 'monospace');
   ctx.font = `11.5px ${mono}`;
   const pad = 7;
   const lineHeight = 15;
   const height = lines.length * lineHeight + pad * 2 - 3;
+  let x = pointerX + 18;
+  if (x + width > w - 4) x = pointerX - 18 - width;
+  x = Math.min(Math.max(4, x), w - width - 4);
+  const y = Math.min(Math.max(4, pointerY - height / 2), h - height - 4);
   ctx.globalAlpha = 0.96;
   ctx.fillStyle = c.surface;
   ctx.strokeStyle = c.border;
