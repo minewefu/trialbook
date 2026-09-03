@@ -22,21 +22,23 @@ export default function App() {
             <p className="tagline">Run experiments with your agent. Keep the lab notebook together.</p>
           </div>
         </div>
+        <ExperimentTabs />
         <StatusPill />
       </header>
 
       <Walkthrough />
-      <ExperimentTabs />
 
-      <main className="layout">
+      <main className="workbench">
+        <aside className="params-col">
+          <ParameterPanel />
+        </aside>
         <section className="main-col">
           <SimStage />
-          <ParameterPanel />
+          <PromptIdeas />
           <ResultsPanel />
         </section>
         <aside className="side-col">
           <Notebook />
-          <PromptIdeas />
           <ToolsPanel />
           <SetupPanel />
           <ActivityLog />

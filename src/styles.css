@@ -16,7 +16,7 @@
   --err-soft: #ffe2e0;
   --agent: #6639ba;
   --agent-soft: #eee6ff;
-  --radius: 12px;
+  --radius: 10px;
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
@@ -52,8 +52,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: 14.5px;
+  line-height: 1.45;
 }
 
 a {
@@ -69,7 +69,7 @@ pre,
 
 pre {
   margin: 0;
-  padding: 10px 12px;
+  padding: 8px 10px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -86,15 +86,15 @@ h2 {
 }
 
 h1 {
-  font-size: 1.35rem;
+  font-size: 1.25rem;
 }
 
 h2 {
-  font-size: 1.05rem;
+  font-size: 1rem;
 }
 
 p {
-  margin: 0.5rem 0;
+  margin: 0.35rem 0;
 }
 
 .muted {
@@ -102,38 +102,43 @@ p {
 }
 
 .small {
-  font-size: 0.875rem;
+  font-size: 0.86rem;
+}
+
+.tiny {
+  font-size: 0.78rem;
 }
 
 .spacer {
   flex: 1;
 }
 
+/* Page frame */
 .app {
-  max-width: 1280px;
+  max-width: 1680px;
   margin: 0 auto;
-  padding: 20px clamp(12px, 3vw, 28px) 40px;
+  padding: 12px clamp(10px, 2vw, 22px) 28px;
 }
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px 18px;
   flex-wrap: wrap;
-  padding-bottom: 14px;
+  padding-bottom: 10px;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .tagline {
   margin: 0;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 /* Status pill */
@@ -141,10 +146,10 @@ p {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
+  padding: 5px 11px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 550;
   white-space: nowrap;
 }
@@ -182,37 +187,24 @@ a.pill:hover {
   text-decoration: underline;
 }
 
-/* Walkthrough */
-.walkthrough {
-  margin-bottom: 14px;
-  border-left: 3px solid var(--accent);
-}
-
-.steps {
-  margin: 4px 0 0;
-  padding-left: 22px;
-  display: grid;
-  gap: 6px;
-}
-
-/* Experiment tabs */
+/* Experiment tabs live in the header on wide screens and wrap below it on narrow ones. */
 .tabs {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
-  margin-bottom: 14px;
 }
 
 .tab {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
+  padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   font: inherit;
+  font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
 }
@@ -238,41 +230,93 @@ a.pill:hover {
   color: var(--muted);
 }
 
-/* Layout */
-.layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr);
-  gap: 16px;
-  align-items: start;
+/* Walkthrough */
+.walkthrough {
+  margin-bottom: 12px;
+  border-left: 3px solid var(--accent);
 }
 
-@media (max-width: 900px) {
-  .layout {
-    grid-template-columns: 1fr;
+.steps {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px 18px;
+  list-style-position: outside;
+}
+
+@media (min-width: 900px) {
+  .steps {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
+/* Workbench: one column on phones, two on laptops, three on wide screens. */
+.workbench {
+  display: grid;
+  gap: 12px;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "main"
+    "params"
+    "side";
+}
+
+.params-col {
+  grid-area: params;
+}
+
+.main-col {
+  grid-area: main;
+}
+
+.side-col {
+  grid-area: side;
+}
+
+.params-col,
 .main-col,
 .side-col {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .workbench {
+    grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
+    grid-template-areas:
+      "main side"
+      "params side";
+  }
+}
+
+@media (min-width: 1400px) {
+  .workbench {
+    grid-template-columns: 300px minmax(0, 1fr) 400px;
+    grid-template-areas: "params main side";
+  }
+
+  .params-col {
+    position: sticky;
+    top: 12px;
+  }
 }
 
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px 18px;
+  padding: 12px 14px;
 }
 
 .card-head {
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
+  gap: 10px;
+  margin-bottom: 6px;
   flex-wrap: wrap;
 }
 
@@ -280,10 +324,50 @@ a.pill:hover {
   margin: 2px 0 0;
 }
 
+/* Collapsible cards: the summary acts as the card header. */
+details.collapsible > summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+details.collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.collapsible > summary::after {
+  content: "›";
+  color: var(--muted);
+  font-size: 1.1rem;
+  transform: rotate(90deg);
+  transition: transform 0.15s;
+}
+
+details.collapsible[open] > summary::after {
+  transform: rotate(-90deg);
+}
+
+details.collapsible[open] > summary {
+  margin-bottom: 6px;
+}
+
+details.collapsible details {
+  margin-top: 6px;
+}
+
+summary.sub {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
 .row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -297,7 +381,7 @@ a.pill:hover {
 
 /* Buttons and inputs */
 .btn {
-  padding: 7px 14px;
+  padding: 6px 12px;
   border-radius: 8px;
   border: 1px solid transparent;
   background: var(--accent);
@@ -308,8 +392,8 @@ a.pill:hover {
 }
 
 .btn.small {
-  padding: 5px 10px;
-  font-size: 0.85rem;
+  padding: 4px 10px;
+  font-size: 0.84rem;
 }
 
 .btn.ghost {
@@ -353,7 +437,7 @@ textarea,
 select {
   width: 100%;
   font: inherit;
-  padding: 8px 10px;
+  padding: 7px 9px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -369,13 +453,13 @@ select {
 }
 
 .chip {
-  padding: 3px 10px;
+  padding: 2px 9px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   cursor: pointer;
 }
 
@@ -393,11 +477,12 @@ select {
 }
 
 .segmented button {
-  padding: 6px 14px;
+  padding: 4px 11px;
   border: 0;
   background: var(--surface);
   color: var(--text);
   font: inherit;
+  font-size: 0.85rem;
   cursor: pointer;
 }
 
@@ -434,8 +519,8 @@ select {
 }
 
 .sweep-bar {
-  margin-top: 10px;
-  padding: 10px 12px;
+  margin-top: 8px;
+  padding: 8px 10px;
   border-radius: 10px;
   background: var(--agent-soft);
   color: var(--text);
@@ -448,15 +533,24 @@ select {
   accent-color: var(--agent);
 }
 
-/* Parameters */
+/* Parameters: one compact row per parameter, description in the tooltip. */
 .params {
   display: grid;
-  gap: 14px;
+  gap: 4px;
+  margin-bottom: 8px;
 }
 
 .param {
-  padding: 10px 12px;
-  border-radius: 10px;
+  display: grid;
+  grid-template-columns: minmax(86px, 118px) minmax(0, 1fr) auto;
+  grid-template-areas:
+    "label control value"
+    "extra extra extra";
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 4px;
+  padding: 5px 8px;
+  border-radius: 8px;
   border: 1px solid transparent;
   transition: background 0.4s, border-color 0.4s;
 }
@@ -466,57 +560,62 @@ select {
   border-color: var(--agent);
 }
 
-.param-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+.param-label {
+  grid-area: label;
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: help;
 }
 
-.param-head label {
-  font-weight: 600;
+.param-control {
+  grid-area: control;
+  min-width: 0;
+  display: flex;
+  align-items: center;
 }
 
 .param-value {
+  grid-area: value;
+  justify-self: end;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 0.84rem;
+}
+
+.param-extra {
+  grid-area: extra;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .param input[type="range"] {
   width: 100%;
-  margin: 8px 0 4px;
+  margin: 0;
   accent-color: var(--accent);
-}
-
-.param p {
-  margin: 4px 0 0;
-}
-
-.presets {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 4px;
 }
 
 /* Results */
 .charts {
   display: grid;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-bottom: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
 .chart-card {
   margin: 0;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface-2);
+  min-width: 0;
 }
 
 .chart-card figcaption {
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .chart {
@@ -572,7 +671,7 @@ select {
 }
 
 .fit-caption {
-  margin: 0 0 6px;
+  margin: 0 0 4px;
 }
 
 .table-wrap {
@@ -582,13 +681,13 @@ select {
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.875rem;
+  font-size: 0.84rem;
 }
 
 .table th,
 .table td {
   text-align: left;
-  padding: 6px 8px;
+  padding: 5px 7px;
   border-bottom: 1px solid var(--border);
   vertical-align: top;
   white-space: nowrap;
@@ -611,8 +710,8 @@ select {
 /* Notebook */
 .note-form {
   display: grid;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 6px;
+  margin-bottom: 10px;
 }
 
 .notes {
@@ -620,11 +719,11 @@ select {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .note {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--surface-2);
@@ -641,17 +740,17 @@ select {
 .note-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .note-text {
   white-space: pre-wrap;
-  margin: 6px 0 0;
+  margin: 5px 0 0;
 }
 
 .note-context {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
 }
 
 .badge-kind {
@@ -704,16 +803,16 @@ select {
 }
 
 .proposal-actions {
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .mode-toggle {
   display: flex;
-  margin: 0 0 10px;
+  margin: 0 0 8px;
 }
 
 .gate-hint {
-  padding: 8px 10px;
+  padding: 6px 9px;
   border-radius: 8px;
   background: var(--warn-soft);
   color: var(--text);
@@ -725,33 +824,67 @@ select {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .prompts li {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-radius: 8px;
   background: var(--surface-2);
 }
 
-/* Tools panel */
-.tool-list,
-.activity {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 10px;
+@media (min-width: 900px) {
+  .prompts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
-.tool {
+/* Tools panel: a chip per tool, one runner open at a time. */
+.tool-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tool-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.tool-chip .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.tool-chip.read .dot {
+  background: var(--ok);
+}
+
+.tool-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.tool-detail {
+  margin-top: 10px;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--surface-2);
 }
 
@@ -767,23 +900,11 @@ select {
   font-weight: 600;
 }
 
-.tool p {
-  margin: 0;
-}
-
-.tool.open {
-  background: var(--surface);
-}
-
-.tool .linkish {
-  color: var(--text);
-}
-
 .badge {
   display: inline-block;
   padding: 1px 8px;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.01em;
   text-transform: uppercase;
@@ -824,18 +945,18 @@ select {
 }
 
 .runner {
-  margin-top: 10px;
+  margin-top: 8px;
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .runner textarea {
   font-family: var(--mono);
-  font-size: 0.85rem;
+  font-size: 0.84rem;
 }
 
 .output {
-  max-height: 260px;
+  max-height: 240px;
 }
 
 details summary {
@@ -845,13 +966,21 @@ details summary {
 
 details ol,
 details p {
-  margin-top: 6px;
+  margin-top: 4px;
+}
+
+.activity {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
 }
 
 .activity li {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -862,24 +991,24 @@ details p {
 /* Toasts */
 .toasts {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
+  right: 14px;
+  bottom: 14px;
   display: grid;
   gap: 8px;
   z-index: 50;
-  max-width: min(420px, calc(100vw - 32px));
+  max-width: min(420px, calc(100vw - 28px));
 }
 
 .toast {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 9px 11px;
   border-radius: 10px;
   background: var(--surface);
   border: 1px solid var(--border);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
 }
 
 .toast.agent {
@@ -896,6 +1025,6 @@ details p {
 }
 
 .foot {
-  margin-top: 28px;
+  margin-top: 22px;
   text-align: center;
 }

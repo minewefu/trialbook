@@ -5,14 +5,16 @@ export function ActivityLog() {
   useRegistryVersion();
   const all = getActivity();
   const items = all.slice(0, 12);
+  const last = all[0];
   return (
-    <section className="card">
-      <header className="card-head">
+    <details className="card collapsible">
+      <summary>
         <h2>Activity</h2>
         <span className="muted small">
           {all.length === 0 ? 'no calls yet' : all.length === 1 ? '1 call' : `${all.length} calls`}
+          {last ? ` · last ${last.tool} by ${last.source === 'agent' ? 'agent' : 'panel'}` : ''}
         </span>
-      </header>
+      </summary>
       {items.length === 0 ? (
         <p className="muted small">Tool calls from your agent and from the Tools panel appear here, newest first.</p>
       ) : (
@@ -29,6 +31,6 @@ export function ActivityLog() {
           ))}
         </ul>
       )}
-    </section>
+    </details>
   );
 }

@@ -1,11 +1,14 @@
+import { hasWebMCP } from '../lib/webmcp';
+
 export function SetupPanel() {
   return (
-    <section className="card" id="connect">
-      <header className="card-head">
+    <details className="card collapsible" id="connect" open={!hasWebMCP()}>
+      <summary>
         <h2>Connect your agent</h2>
-      </header>
+        <span className="muted small">{hasWebMCP() ? 'connected' : 'how to'}</span>
+      </summary>
       <details open>
-        <summary>ChatGPT desktop app (works out of the box)</summary>
+        <summary className="sub">ChatGPT desktop app (works out of the box)</summary>
         <ol className="small">
           <li>Open the built-in browser from the ChatGPT toolbar and load this page.</li>
           <li>A gray arrow appears in the address bar when the page offers site tools. Click it to see them.</li>
@@ -19,7 +22,7 @@ export function SetupPanel() {
         </p>
       </details>
       <details>
-        <summary>Google Chrome 149 or newer (behind a flag)</summary>
+        <summary className="sub">Google Chrome 149 or newer (behind a flag)</summary>
         <ol className="small">
           <li>
             Enable <code>chrome://flags/#enable-webmcp-testing</code> and{' '}
@@ -29,12 +32,12 @@ export function SetupPanel() {
         </ol>
       </details>
       <details>
-        <summary>Any other browser</summary>
+        <summary className="sub">Any other browser</summary>
         <p className="small">
           The Tools panel above lets you run every tool yourself. The status pill in the header tells you whether
           this browser exposes WebMCP.
         </p>
       </details>
-    </section>
+    </details>
   );
 }

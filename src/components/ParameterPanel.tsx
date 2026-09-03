@@ -41,31 +41,20 @@ export function ParameterPanel() {
       <header className="card-head">
         <h2>Parameters</h2>
         <button className="btn ghost small" onClick={() => resetParams(experiment, 'you')} disabled={busy}>
-          Reset to defaults
+          Reset
         </button>
       </header>
-      <label
-        className="toggle small mode-toggle"
-        title="Adds a synthetic reading resolution and a small relative error to every new measurement, so repeats scatter and error bars mean something. The motion itself stays exact."
-      >
-        <input type="checkbox" checked={measurementError} onChange={(e) => setMeasurementError(e.target.checked, 'you')} disabled={busy} />{' '}
-        Simulate measurement error on new readings <span className="muted">(synthetic noise)</span>
-      </label>
       <div className="params">
         {def.params.map((spec) => {
           const hot = (highlights[spec.key] ?? 0) > now;
           const value = values[spec.key];
           return (
-            <div key={spec.key} className={`param ${hot ? 'hot' : ''}`}>
-              <div className="param-head">
-                <label htmlFor={`param-${spec.key}`}>{spec.label}</label>
-                <span className="param-value mono">
-                  {spec.kind === 'number' ? `${value} ${spec.unit}` : String(value)}
-                  {hot && <span className="badge badge-agent">agent</span>}
-                </span>
-              </div>
-              {spec.kind === 'number' ? (
-                <>
+            <div key={spec.key} className={`param ${hot ? 'hot' : ''}`} title={spec.description}>
+              <label className="param-label" htmlFor={`param-${spec.key}`}>
+                {spec.label}
+              </label>
+              <div className="param-control">
+                {spec.kind === 'number' ? (
                   <input
                     id={`param-${spec.key}`}
                     type="range"
@@ -76,40 +65,51 @@ export function ParameterPanel() {
                     disabled={busy}
                     onChange={(e) => update(spec.key, Number(e.target.value))}
                   />
-                  {spec.presets && (
-                    <div className="presets">
-                      {spec.presets.map((preset) => (
-                        <button
-                          key={preset.label}
-                          className={`chip ${Number(value) === preset.value ? 'active' : ''}`}
-                          disabled={busy}
-                          onClick={() => update(spec.key, preset.value)}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="segmented" role="group" aria-label={spec.label} id={`param-${spec.key}`}>
-                  {spec.options.map((option) => (
+                ) : (
+                  <div className="segmented" role="group" aria-label={spec.label} id={`param-${spec.key}`}>
+                    {spec.options.map((option) => (
+                      <button
+                        key={option}
+                        className={value === option ? 'active' : ''}
+                        disabled={busy}
+                        onClick={() => update(spec.key, option)}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <span className="param-value mono">
+                {spec.kind === 'number' ? `${value} ${spec.unit}` : ''}
+                {hot && <span className="badge badge-agent">agent</span>}
+              </span>
+              {spec.kind === 'number' && spec.presets && (
+                <div className="param-extra">
+                  {spec.presets.map((preset) => (
                     <button
-                      key={option}
-                      className={value === option ? 'active' : ''}
+                      key={preset.label}
+                      className={`chip ${Number(value) === preset.value ? 'active' : ''}`}
                       disabled={busy}
-                      onClick={() => update(spec.key, option)}
+                      onClick={() => update(spec.key, preset.value)}
                     >
-                      {option}
+                      {preset.label}
                     </button>
                   ))}
                 </div>
               )}
-              <p className="muted small">{spec.description}</p>
             </div>
           );
         })}
       </div>
+      <label
+        className="toggle small mode-toggle"
+        title="Adds a synthetic reading resolution and a small relative error to every new measurement, so repeats scatter and error bars mean something. The motion itself stays exact."
+      >
+        <input type="checkbox" checked={measurementError} onChange={(e) => setMeasurementError(e.target.checked, 'you')} disabled={busy} />{' '}
+        Simulate measurement error <span className="muted">(synthetic)</span>
+      </label>
+      <p className="muted tiny">Hover a parameter for what it means. Your agent's changes glow purple.</p>
     </section>
   );
 }

@@ -35,8 +35,7 @@ export function SimStage() {
     <section className="card stage">
       <header className="card-head">
         <div>
-          <h2>{def.title}</h2>
-          <p className="muted small">{def.summary}</p>
+          <h2 title={def.summary}>{def.title}</h2>
         </div>
         <div className="row">
           <label className="toggle small">
