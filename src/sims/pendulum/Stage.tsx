@@ -1,17 +1,30 @@
 import { useRef } from 'react';
 import { round } from '../../lib/format';
-import { emptyMessage, lastTime, playbackProgress, sampleAt, themeColors, useCanvasLoop, usePlayback, type StageProps } from '../stageKit';
+import {
+  drawReadout,
+  emptyMessage,
+  inRect,
+  lastTime,
+  playbackProgress,
+  sampleAt,
+  themeColors,
+  useCanvasLoop,
+  usePlayback,
+  usePointer,
+  type StageProps,
+} from '../stageKit';
 
 const HEIGHT = 340;
 const TO_RAD = Math.PI / 180;
 
 export function PendulumStage({ trial, ghosts, watch, replayNonce }: StageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pointer = usePointer(canvasRef);
   const windowSeconds = trial ? lastTime(trial.series) : 0;
   const durationMs = trial ? Math.min(6000, Math.max(2500, windowSeconds * 1000)) : 0;
   const anim = usePlayback(trial, watch, replayNonce, durationMs);
 
-  useCanvasLoop(canvasRef, HEIGHT, [trial, ghosts, watch, replayNonce], (ctx, w, h) => {
+  useCanvasLoop(canvasRef, HEIGHT, [trial, ghosts, watch, replayNonce, pointer], (ctx, w, h) => {
     const c = themeColors();
     if (!trial) {
       emptyMessage(ctx, w, h, 'Run a trial to release the pendulum, or ask your agent to.');
@@ -29,6 +42,14 @@ export function PendulumStage({ trial, ghosts, watch, replayNonce }: StageProps)
     const leftW = Math.min(w * 0.42, h - top);
     const left = { x: pad, y: top, w: leftW - pad, h: h - top - pad };
     const right = { x: leftW + 16, y: top + 8, w: w - leftW - 16 - pad, h: h - top - 8 - 40 };
+
+    // Hovering the time chart scrubs the pendulum to that instant.
+    const hoverT =
+      pointer && inRect(pointer.x, pointer.y, right, 8)
+        ? Math.min(windowSeconds, Math.max(0, ((pointer.x - right.x) / right.w) * windowSeconds))
+        : null;
+    const tShow = hoverT ?? tNow;
+
     // Past 90 degrees the bob swings above the pivot, so the pivot moves to the centre to fit a full circle.
     const wide = maxAmplitude > 90;
     const pivot = { x: left.x + left.w / 2, y: wide ? left.y + left.h / 2 : left.y + 14 };
@@ -38,7 +59,7 @@ export function PendulumStage({ trial, ghosts, watch, replayNonce }: StageProps)
     const drawPendulum = (t: typeof trial, alpha: number, width: number) => {
       const R = rodFor(Number(t.params.length) || 1);
       const amplitude = (Number(t.params.amplitude) || 0) * TO_RAD;
-      const angle = sampleAt(t.series, 'angle', tNow) * TO_RAD;
+      const angle = sampleAt(t.series, 'angle', tShow) * TO_RAD;
       const color = t.actor === 'agent' ? c.agent : c.accent;
       ctx.save();
       ctx.globalAlpha = alpha * 0.5;
@@ -99,7 +120,7 @@ export function PendulumStage({ trial, ghosts, watch, replayNonce }: StageProps)
     ctx.textAlign = 'right';
     ctx.fillText(`${round(windowSeconds, 3)} s`, right.x + right.w, right.y + right.h + 16);
     ctx.textAlign = 'left';
-    ctx.fillText('angle over time', right.x, right.y + right.h + 16);
+    ctx.fillText('angle over time · hover to inspect', right.x, right.y + right.h + 16);
 
     const drawSeries = (t: typeof trial, alpha: number, upTo: number, width: number) => {
       ctx.save();
@@ -122,12 +143,12 @@ export function PendulumStage({ trial, ghosts, watch, replayNonce }: StageProps)
     };
     for (const g of ghosts.slice(-8)) drawSeries(g, 0.14, Infinity, 1);
     drawSeries(trial, 0.3, Infinity, 1);
-    drawSeries(trial, 1, tNow, 2);
+    drawSeries(trial, 1, tShow, 2);
     ctx.strokeStyle = c.muted;
     ctx.setLineDash([2, 4]);
     ctx.beginPath();
-    ctx.moveTo(sx(tNow), right.y);
-    ctx.lineTo(sx(tNow), right.y + right.h);
+    ctx.moveTo(sx(tShow), right.y);
+    ctx.lineTo(sx(tShow), right.y + right.h);
     ctx.stroke();
     ctx.setLineDash([]);
 
@@ -144,7 +165,33 @@ export function PendulumStage({ trial, ghosts, watch, replayNonce }: StageProps)
     );
     ctx.textAlign = 'right';
     ctx.fillStyle = c.muted;
-    ctx.fillText(`t = ${round(tNow, 3)} s`, w - pad, 4);
+    ctx.fillText(hoverT !== null ? `t = ${round(tShow, 3)} s · hover` : `t = ${round(tShow, 3)} s`, w - pad, 4);
+
+    if (hoverT !== null && pointer) {
+      const angle = sampleAt(trial.series, 'angle', tShow);
+      const omega = sampleAt(trial.series, 'omega', tShow);
+      const L = Number(trial.params.length) || 1;
+      const color = trial.actor === 'agent' ? c.agent : c.accent;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(sx(tShow), sy(angle), 6, 0, Math.PI * 2);
+      ctx.stroke();
+      drawReadout(
+        ctx,
+        w,
+        h,
+        pointer.x,
+        pointer.y,
+        [
+          `t = ${round(tShow, 3)} s`,
+          `angle ${round(angle, 4)}°`,
+          `angular speed ${round(omega, 4)} rad/s`,
+          `bob speed ${round(Math.abs(omega) * L, 4)} m/s · height ${round(L * (1 - Math.cos(angle * TO_RAD)), 4)} m`,
+        ],
+        c,
+      );
+    }
     return progress < 1;
   });
 

@@ -29,13 +29,11 @@ export default function App() {
       <Walkthrough />
 
       <main className="workbench">
-        <aside className="params-col">
-          <ParameterPanel />
-        </aside>
         <section className="main-col">
           <SimStage />
-          <PromptIdeas />
+          <ParameterPanel />
           <ResultsPanel />
+          <PromptIdeas />
         </section>
         <aside className="side-col">
           <Notebook />

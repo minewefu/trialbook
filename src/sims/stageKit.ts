@@ -1,9 +1,11 @@
-import { useEffect, useRef, type DependencyList, type MutableRefObject, type RefObject } from 'react';
+import { useEffect, useRef, useState, type DependencyList, type MutableRefObject, type RefObject } from 'react';
 import type { Trial } from '../store';
 import type { SeriesPoint } from './types';
 
 export type StageProps = { trial: Trial | null; ghosts: Trial[]; watch: boolean; replayNonce: number };
 export type Playback = MutableRefObject<{ start: number; duration: number } | null>;
+export type Pointer = { x: number; y: number } | null;
+export type Rect = { x: number; y: number; w: number; h: number };
 
 export function cssVar(name: string, fallback: string): string {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -15,6 +17,7 @@ export function themeColors() {
     text: cssVar('--text', '#222'),
     muted: cssVar('--muted', '#777'),
     border: cssVar('--border', '#ccc'),
+    surface: cssVar('--surface', '#fff'),
     accent: cssVar('--accent', '#1f6feb'),
     agent: cssVar('--agent', '#6639ba'),
     warn: cssVar('--warn', '#9a6700'),
@@ -22,6 +25,8 @@ export function themeColors() {
     font: cssVar('--font', 'sans-serif'),
   };
 }
+
+export type Colors = ReturnType<typeof themeColors>;
 
 /** Linear interpolation of one series key at time t. */
 export function sampleAt(series: SeriesPoint[], key: string, t: number): number {
@@ -66,6 +71,84 @@ export function usePlayback(trial: Trial | null, watch: boolean, replayNonce: nu
     else if (!trial) anim.current = null;
   }, [trial, watch, replayNonce, durationMs]);
   return anim;
+}
+
+/** Pointer position over the canvas in CSS pixels, or null when the pointer is elsewhere. Works for mouse and touch. */
+export function usePointer(canvasRef: RefObject<HTMLCanvasElement | null>): Pointer {
+  const [pointer, setPointer] = useState<Pointer>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const move = (e: PointerEvent) => {
+      const r = canvas.getBoundingClientRect();
+      setPointer({ x: e.clientX - r.left, y: e.clientY - r.top });
+    };
+    const leave = () => setPointer(null);
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerdown', move);
+    canvas.addEventListener('pointerleave', leave);
+    canvas.addEventListener('pointercancel', leave);
+    return () => {
+      canvas.removeEventListener('pointermove', move);
+      canvas.removeEventListener('pointerdown', move);
+      canvas.removeEventListener('pointerleave', leave);
+      canvas.removeEventListener('pointercancel', leave);
+    };
+  }, [canvasRef]);
+  return pointer;
+}
+
+export function inRect(x: number, y: number, r: Rect, slack = 0): boolean {
+  return x >= r.x - slack && x <= r.x + r.w + slack && y >= r.y - slack && y <= r.y + r.h + slack;
+}
+
+/** Index of the series point nearest to a screen position, or -1 when nothing is within `maxDistance` px. */
+export function nearestPoint(
+  series: SeriesPoint[],
+  toScreen: (p: SeriesPoint) => [number, number],
+  x: number,
+  y: number,
+  maxDistance = 36,
+): number {
+  let best = -1;
+  let bestDistance = maxDistance * maxDistance;
+  for (let i = 0; i < series.length; i++) {
+    const [sx, sy] = toScreen(series[i]);
+    const d = (sx - x) ** 2 + (sy - y) ** 2;
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+/** A small tooltip box next to the pointer, kept inside the canvas. */
+export function drawReadout(ctx: CanvasRenderingContext2D, w: number, h: number, x: number, y: number, lines: string[], c: Colors): void {
+  ctx.save();
+  ctx.font = `12px ${c.font}`;
+  const pad = 7;
+  const lineHeight = 15;
+  const width = Math.max(...lines.map((line) => ctx.measureText(line).width)) + pad * 2;
+  const height = lines.length * lineHeight + pad * 2 - 3;
+  let bx = x + 14;
+  let by = y + 14;
+  if (bx + width > w - 4) bx = x - 14 - width;
+  if (by + height > h - 4) by = y - 14 - height;
+  bx = Math.max(4, bx);
+  by = Math.max(4, by);
+  ctx.fillStyle = c.surface;
+  ctx.strokeStyle = c.border;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(bx, by, width, height, 6);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = c.text;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  lines.forEach((line, i) => ctx.fillText(line, bx + pad, by + pad + i * lineHeight));
+  ctx.restore();
 }
 
 /**

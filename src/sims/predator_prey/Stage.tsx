@@ -1,16 +1,30 @@
 import { useRef } from 'react';
 import { round } from '../../lib/format';
 import type { Trial } from '../../store';
-import { emptyMessage, lastTime, playbackProgress, sampleAt, themeColors, useCanvasLoop, usePlayback, type StageProps } from '../stageKit';
+import {
+  drawReadout,
+  emptyMessage,
+  inRect,
+  lastTime,
+  nearestPoint,
+  playbackProgress,
+  sampleAt,
+  themeColors,
+  useCanvasLoop,
+  usePlayback,
+  usePointer,
+  type StageProps,
+} from '../stageKit';
 
 const HEIGHT = 340;
 
 export function PredatorPreyStage({ trial, ghosts, watch, replayNonce }: StageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pointer = usePointer(canvasRef);
   const durationMs = trial ? 5000 : 0;
   const anim = usePlayback(trial, watch, replayNonce, durationMs);
 
-  useCanvasLoop(canvasRef, HEIGHT, [trial, ghosts, watch, replayNonce], (ctx, w, h) => {
+  useCanvasLoop(canvasRef, HEIGHT, [trial, ghosts, watch, replayNonce, pointer], (ctx, w, h) => {
     const c = themeColors();
     if (!trial) {
       emptyMessage(ctx, w, h, 'Run a trial to start the seasons, or ask your agent to.');
@@ -18,7 +32,6 @@ export function PredatorPreyStage({ trial, ghosts, watch, replayNonce }: StagePr
     }
     const progress = playbackProgress(anim);
     const total = lastTime(trial.series);
-    const tNow = progress * total;
     const all = [trial, ...ghosts];
     let maxPrey = 1;
     let maxPred = 1;
@@ -42,9 +55,24 @@ export function PredatorPreyStage({ trial, ghosts, watch, replayNonce }: StagePr
     const preyColor = c.ok;
     const predColor = c.warn;
 
-    // Left: populations over time.
     const tx = (t: number) => left.x + (t / maxT) * left.w;
     const ty = (v: number) => left.y + left.h - (v / yMax) * left.h;
+    const px = (v: number) => right.x + (v / maxPrey) * right.w;
+    const py = (v: number) => right.y + right.h - (v / maxPred) * right.h;
+
+    // Hovering the time chart or the phase plane scrubs to that season.
+    let hoverT: number | null = null;
+    if (pointer) {
+      if (inRect(pointer.x, pointer.y, left, 8)) {
+        hoverT = Math.min(total, Math.max(0, ((pointer.x - left.x) / left.w) * maxT));
+      } else if (inRect(pointer.x, pointer.y, right, 8)) {
+        const i = nearestPoint(trial.series, (p) => [px(p.prey), py(p.predators)], pointer.x, pointer.y, 24);
+        if (i >= 0) hoverT = trial.series[i].t;
+      }
+    }
+    const tShow = hoverT ?? progress * total;
+
+    // Left: populations over time.
     ctx.strokeStyle = c.border;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -60,7 +88,7 @@ export function PredatorPreyStage({ trial, ghosts, watch, replayNonce }: StagePr
     ctx.fillText('0', left.x - 6, left.y + left.h);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText('populations over seasons', left.x, left.y + left.h + 6);
+    ctx.fillText('populations over seasons · hover to inspect', left.x, left.y + left.h + 6);
     ctx.textAlign = 'right';
     ctx.fillText(`${round(maxT, 3)} seasons`, left.x + left.w, left.y + left.h + 6);
 
@@ -89,12 +117,17 @@ export function PredatorPreyStage({ trial, ghosts, watch, replayNonce }: StagePr
     }
     drawSeries(trial, 'prey', preyColor, 0.25, Infinity, 1);
     drawSeries(trial, 'predators', predColor, 0.25, Infinity, 1);
-    drawSeries(trial, 'prey', preyColor, 1, tNow, 2.2);
-    drawSeries(trial, 'predators', predColor, 1, tNow, 2.2);
+    drawSeries(trial, 'prey', preyColor, 1, tShow, 2.2);
+    drawSeries(trial, 'predators', predColor, 1, tShow, 2.2);
+    ctx.strokeStyle = c.muted;
+    ctx.setLineDash([2, 4]);
+    ctx.beginPath();
+    ctx.moveTo(tx(tShow), left.y);
+    ctx.lineTo(tx(tShow), left.y + left.h);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
     // Right: phase plane, prey against predators, with the equilibrium marked.
-    const px = (v: number) => right.x + (v / maxPrey) * right.w;
-    const py = (v: number) => right.y + right.h - (v / maxPred) * right.h;
     ctx.strokeStyle = c.border;
     ctx.beginPath();
     ctx.moveTo(right.x, right.y);
@@ -133,7 +166,7 @@ export function PredatorPreyStage({ trial, ghosts, watch, replayNonce }: StagePr
     };
     for (const g of ghosts) drawOrbit(g, 0.2, Infinity, 1);
     drawOrbit(trial, 0.3, Infinity, 1);
-    drawOrbit(trial, 1, tNow, 2);
+    drawOrbit(trial, 1, tShow, 2);
 
     const eqPrey = Number(trial.params.predator_death) / Number(trial.params.predator_efficiency);
     const eqPred = Number(trial.params.prey_growth) / Number(trial.params.predation);
@@ -146,9 +179,11 @@ export function PredatorPreyStage({ trial, ghosts, watch, replayNonce }: StagePr
       ctx.lineTo(px(eqPrey), py(eqPred) + 5);
       ctx.stroke();
     }
+    const preyNow = sampleAt(trial.series, 'prey', tShow);
+    const predNow = sampleAt(trial.series, 'predators', tShow);
     ctx.fillStyle = trial.actor === 'agent' ? c.agent : c.accent;
     ctx.beginPath();
-    ctx.arc(px(sampleAt(trial.series, 'prey', tNow)), py(sampleAt(trial.series, 'predators', tNow)), 5, 0, Math.PI * 2);
+    ctx.arc(px(preyNow), py(predNow), 5, 0, Math.PI * 2);
     ctx.fill();
 
     const m = trial.measurements;
@@ -163,12 +198,32 @@ export function PredatorPreyStage({ trial, ghosts, watch, replayNonce }: StagePr
     );
     ctx.textAlign = 'right';
     ctx.fillStyle = c.muted;
-    ctx.fillText(`season ${round(tNow, 3)}`, w - pad, 4);
+    ctx.fillText(hoverT !== null ? `season ${round(tShow, 3)} · hover` : `season ${round(tShow, 3)}`, w - pad, 4);
     ctx.textAlign = 'left';
     ctx.fillStyle = preyColor;
     ctx.fillText('prey', left.x + 6, left.y + 2);
     ctx.fillStyle = predColor;
     ctx.fillText('predators', left.x + 44, left.y + 2);
+
+    if (hoverT !== null && pointer) {
+      ctx.fillStyle = preyColor;
+      ctx.beginPath();
+      ctx.arc(tx(tShow), ty(preyNow), 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = predColor;
+      ctx.beginPath();
+      ctx.arc(tx(tShow), ty(predNow), 4, 0, Math.PI * 2);
+      ctx.fill();
+      drawReadout(
+        ctx,
+        w,
+        h,
+        pointer.x,
+        pointer.y,
+        [`season ${round(tShow, 3)}`, `prey ${round(preyNow, 4)}`, `predators ${round(predNow, 4)}`],
+        c,
+      );
+    }
     return progress < 1;
   });
 

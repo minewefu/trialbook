@@ -1,16 +1,28 @@
 import { useRef } from 'react';
 import { niceStep, round } from '../../lib/format';
 import type { Trial } from '../../store';
-import { emptyMessage, playbackProgress, sampleAt, themeColors, useCanvasLoop, usePlayback, type StageProps } from '../stageKit';
+import {
+  drawReadout,
+  emptyMessage,
+  nearestPoint,
+  playbackProgress,
+  sampleAt,
+  themeColors,
+  useCanvasLoop,
+  usePlayback,
+  usePointer,
+  type StageProps,
+} from '../stageKit';
 
 const HEIGHT = 340;
 
 export function ProjectileStage({ trial, ghosts, watch, replayNonce }: StageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pointer = usePointer(canvasRef);
   const durationMs = trial ? Math.min(3500, Math.max(1200, trial.measurements.flight_time_s * 450)) : 0;
   const anim = usePlayback(trial, watch, replayNonce, durationMs);
 
-  useCanvasLoop(canvasRef, HEIGHT, [trial, ghosts, watch, replayNonce], (ctx, w, h) => {
+  useCanvasLoop(canvasRef, HEIGHT, [trial, ghosts, watch, replayNonce, pointer], (ctx, w, h) => {
     const c = themeColors();
     if (!trial) {
       emptyMessage(ctx, w, h, 'Run a trial to launch the ball, or ask your agent to.');
@@ -93,19 +105,25 @@ export function ProjectileStage({ trial, ghosts, watch, replayNonce }: StageProp
     };
     for (const g of ghosts) drawPath(g, g.actor === 'agent' ? c.agent : c.accent, 0.22, Infinity, 1.5);
 
+    // Hovering the trajectory scrubs to that instant; otherwise playback decides the time shown.
     const progress = playbackProgress(anim);
-    const tNow = progress * trial.measurements.flight_time_s;
+    let tShow = progress * trial.measurements.flight_time_s;
+    const hovered = pointer ? nearestPoint(trial.series, (p) => [px(p.x), py(p.y)], pointer.x, pointer.y) : -1;
+    if (hovered >= 0) tShow = trial.series[hovered].t;
+
     const color = trial.actor === 'agent' ? c.agent : c.accent;
     drawPath(trial, color, 0.35, Infinity, 1.5, true);
-    drawPath(trial, color, 1, tNow, 2.5);
+    drawPath(trial, color, 1, tShow, 2.5);
 
     ctx.fillStyle = c.muted;
     ctx.beginPath();
     ctx.arc(px(0), py(launchHeight), 3.5, 0, Math.PI * 2);
     ctx.fill();
+    const bx = px(sampleAt(trial.series, 'x', tShow));
+    const by = py(sampleAt(trial.series, 'y', tShow));
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(px(sampleAt(trial.series, 'x', tNow)), py(sampleAt(trial.series, 'y', tNow)), 6, 0, Math.PI * 2);
+    ctx.arc(bx, by, 6, 0, Math.PI * 2);
     ctx.fill();
 
     const m = trial.measurements;
@@ -120,7 +138,34 @@ export function ProjectileStage({ trial, ghosts, watch, replayNonce }: StageProp
     );
     ctx.textAlign = 'right';
     ctx.fillStyle = c.muted;
-    ctx.fillText(`t = ${round(tNow, 3)} s`, w - pad.r, 4);
+    ctx.fillText(hovered >= 0 ? `t = ${round(tShow, 3)} s · hover` : `t = ${round(tShow, 3)} s`, w - pad.r, 4);
+
+    if (hovered >= 0 && pointer) {
+      const s = trial.series;
+      const a = s[Math.max(0, hovered - 1)];
+      const b = s[Math.min(s.length - 1, hovered + 1)];
+      const dt = b.t - a.t || 1e-9;
+      const vx = (b.x - a.x) / dt;
+      const vy = (b.y - a.y) / dt;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(bx, by, 10, 0, Math.PI * 2);
+      ctx.stroke();
+      drawReadout(
+        ctx,
+        w,
+        h,
+        pointer.x,
+        pointer.y,
+        [
+          `t = ${round(s[hovered].t, 3)} s`,
+          `x ${round(s[hovered].x, 4)} m · y ${round(s[hovered].y, 4)} m`,
+          `speed ${round(Math.hypot(vx, vy), 3)} m/s (vx ${round(vx, 3)}, vy ${round(vy, 3)})`,
+        ],
+        c,
+      );
+    }
     return progress < 1;
   });
 

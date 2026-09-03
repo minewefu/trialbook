@@ -49,7 +49,7 @@ export function ParameterPanel() {
           const hot = (highlights[spec.key] ?? 0) > now;
           const value = values[spec.key];
           return (
-            <div key={spec.key} className={`param ${hot ? 'hot' : ''}`} title={spec.description}>
+            <div key={spec.key} className={`param ${spec.kind === 'enum' ? 'enum' : ''} ${hot ? 'hot' : ''}`} title={spec.description}>
               <label className="param-label" htmlFor={`param-${spec.key}`}>
                 {spec.label}
               </label>

@@ -1,16 +1,29 @@
 import { useRef } from 'react';
 import { round } from '../../lib/format';
 import type { Trial } from '../../store';
-import { emptyMessage, lastTime, playbackProgress, sampleAt, themeColors, useCanvasLoop, usePlayback, type StageProps } from '../stageKit';
+import {
+  drawReadout,
+  emptyMessage,
+  inRect,
+  lastTime,
+  playbackProgress,
+  sampleAt,
+  themeColors,
+  useCanvasLoop,
+  usePlayback,
+  usePointer,
+  type StageProps,
+} from '../stageKit';
 
 const HEIGHT = 340;
 
 export function RcStage({ trial, ghosts, watch, replayNonce }: StageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pointer = usePointer(canvasRef);
   const durationMs = trial ? 4000 : 0;
   const anim = usePlayback(trial, watch, replayNonce, durationMs);
 
-  useCanvasLoop(canvasRef, HEIGHT, [trial, ghosts, watch, replayNonce], (ctx, w, h) => {
+  useCanvasLoop(canvasRef, HEIGHT, [trial, ghosts, watch, replayNonce, pointer], (ctx, w, h) => {
     const c = themeColors();
     if (!trial) {
       emptyMessage(ctx, w, h, 'Run a trial to close the switch, or ask your agent to.');
@@ -18,12 +31,9 @@ export function RcStage({ trial, ghosts, watch, replayNonce }: StageProps) {
     }
     const progress = playbackProgress(anim);
     const total = lastTime(trial.series);
-    const tNow = progress * total;
     const supply = Number(trial.params.supply_voltage) || 1;
+    const capacitance = Number(trial.params.capacitance) || 1;
     const mode = String(trial.params.mode);
-    const vNow = sampleAt(trial.series, 'voltage', tNow);
-    const iNow = sampleAt(trial.series, 'current', tNow);
-    const i0 = Math.max(1e-9, Math.abs(trial.series[0]?.current ?? 1));
     const tau = trial.measurements.rc_product_s;
     const color = trial.actor === 'agent' ? c.agent : c.accent;
 
@@ -33,6 +43,19 @@ export function RcStage({ trial, ghosts, watch, replayNonce }: StageProps) {
     const leftW = Math.min(w * 0.44, 330);
     const left = { x: pad, y: top + 6, w: leftW - pad, h: h - top - 6 - pad };
     const right = { x: leftW + 48, y: top + 8, w: w - leftW - 48 - pad, h: h - top - 8 - 40 };
+
+    const vMax = Math.max(supply, ...[trial, ...ghosts].map((t) => Number(t.params.supply_voltage) || 0)) * 1.08;
+    const tMax = Math.max(total, ...ghosts.map((g) => lastTime(g.series)));
+    const sx = (t: number) => right.x + (t / tMax) * right.w;
+    const sy = (v: number) => right.y + right.h - (v / vMax) * right.h;
+
+    // Hovering the voltage chart scrubs the circuit to that instant.
+    const hoverT =
+      pointer && inRect(pointer.x, pointer.y, right, 8) ? Math.min(total, Math.max(0, ((pointer.x - right.x) / right.w) * tMax)) : null;
+    const tShow = hoverT ?? progress * total;
+    const vNow = sampleAt(trial.series, 'voltage', tShow);
+    const iNow = sampleAt(trial.series, 'current', tShow);
+    const i0 = Math.max(1e-9, Math.abs(trial.series[0]?.current ?? 1));
 
     // Wires: a rectangle loop.
     const x0 = left.x + 18;
@@ -44,22 +67,18 @@ export function RcStage({ trial, ghosts, watch, replayNonce }: StageProps) {
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    // top wire with a gap for the resistor
     const rx0 = x0 + (x1 - x0) * 0.42;
     const rx1 = x0 + (x1 - x0) * 0.78;
     ctx.moveTo(x0, y0);
     ctx.lineTo(rx0, y0);
     ctx.moveTo(rx1, y0);
     ctx.lineTo(x1, y0);
-    // right wire with a gap for the capacitor
     ctx.moveTo(x1, y0);
     ctx.lineTo(x1, midY - 9);
     ctx.moveTo(x1, midY + 9);
     ctx.lineTo(x1, y1);
-    // bottom wire
     ctx.moveTo(x1, y1);
     ctx.lineTo(x0, y1);
-    // left wire with a gap for the battery or the switch
     ctx.moveTo(x0, y1);
     ctx.lineTo(x0, midY + 14);
     ctx.moveTo(x0, midY - 14);
@@ -78,7 +97,7 @@ export function RcStage({ trial, ghosts, watch, replayNonce }: StageProps) {
     }
     ctx.stroke();
 
-    // Battery (charging) or open switch with the battery bypassed (discharging).
+    // Battery (charging) or a plain wire where the battery would be (discharging through the resistor).
     if (mode === 'charge') {
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -146,10 +165,6 @@ export function RcStage({ trial, ghosts, watch, replayNonce }: StageProps) {
     ctx.fillText(`V_C = ${round(vNow, 3)} V · I = ${round(iNow, 3)} mA`, (x0 + x1) / 2, y1 + 10);
 
     // Right: voltage against time.
-    const vMax = Math.max(supply, ...[trial, ...ghosts].map((t) => Number(t.params.supply_voltage) || 0)) * 1.08;
-    const tMax = Math.max(total, ...ghosts.map((g) => lastTime(g.series)));
-    const sx = (t: number) => right.x + (t / tMax) * right.w;
-    const sy = (v: number) => right.y + right.h - (v / vMax) * right.h;
     ctx.strokeStyle = c.border;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -165,7 +180,7 @@ export function RcStage({ trial, ghosts, watch, replayNonce }: StageProps) {
     ctx.fillText('0', right.x - 6, right.y + right.h);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText('capacitor voltage over time', right.x, right.y + right.h + 6);
+    ctx.fillText('capacitor voltage over time · hover to inspect', right.x, right.y + right.h + 6);
     ctx.textAlign = 'right';
     ctx.fillText(`${round(tMax, 3)} s`, right.x + right.w, right.y + right.h + 6);
 
@@ -208,10 +223,10 @@ export function RcStage({ trial, ghosts, watch, replayNonce }: StageProps) {
     };
     for (const g of ghosts.slice(-8)) drawCurve(g, 0.2, Infinity, 1);
     drawCurve(trial, 0.3, Infinity, 1);
-    drawCurve(trial, 1, tNow, 2.2);
+    drawCurve(trial, 1, tShow, 2.2);
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(sx(tNow), sy(vNow), 5, 0, Math.PI * 2);
+    ctx.arc(sx(tShow), sy(vNow), 5, 0, Math.PI * 2);
     ctx.fill();
 
     const m = trial.measurements;
@@ -226,7 +241,28 @@ export function RcStage({ trial, ghosts, watch, replayNonce }: StageProps) {
     );
     ctx.textAlign = 'right';
     ctx.fillStyle = c.muted;
-    ctx.fillText(`t = ${round(tNow, 3)} s`, w - pad, 4);
+    ctx.fillText(hoverT !== null ? `t = ${round(tShow, 3)} s · hover` : `t = ${round(tShow, 3)} s`, w - pad, 4);
+
+    if (hoverT !== null && pointer) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(sx(tShow), sy(vNow), 9, 0, Math.PI * 2);
+      ctx.stroke();
+      drawReadout(
+        ctx,
+        w,
+        h,
+        pointer.x,
+        pointer.y,
+        [
+          `t = ${round(tShow, 3)} s`,
+          `V_C ${round(vNow, 4)} V · I ${round(iNow, 4)} mA`,
+          `charge ${round(capacitance * vNow, 4)} µC · energy ${round(0.5 * capacitance * 1e-6 * vNow * vNow * 1e3, 4)} mJ`,
+        ],
+        c,
+      );
+    }
     return progress < 1;
   });
 

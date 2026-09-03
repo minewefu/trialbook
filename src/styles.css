@@ -250,31 +250,14 @@ a.pill:hover {
   }
 }
 
-/* Workbench: one column on phones, two on laptops, three on wide screens. */
+/* Workbench: stage, parameters and results in the main column; notebook and agent panels beside them. */
 .workbench {
   display: grid;
   gap: 12px;
   align-items: start;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-areas:
-    "main"
-    "params"
-    "side";
 }
 
-.params-col {
-  grid-area: params;
-}
-
-.main-col {
-  grid-area: main;
-}
-
-.side-col {
-  grid-area: side;
-}
-
-.params-col,
 .main-col,
 .side-col {
   display: flex;
@@ -285,22 +268,13 @@ a.pill:hover {
 
 @media (min-width: 900px) {
   .workbench {
-    grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
-    grid-template-areas:
-      "main side"
-      "params side";
+    grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
   }
 }
 
 @media (min-width: 1400px) {
   .workbench {
-    grid-template-columns: 300px minmax(0, 1fr) 400px;
-    grid-template-areas: "params main side";
-  }
-
-  .params-col {
-    position: sticky;
-    top: 12px;
+    grid-template-columns: minmax(0, 1fr) 420px;
   }
 }
 
@@ -569,7 +543,7 @@ select {
 
 .param-control {
   grid-area: control;
-  min-width: 0;
+  min-width: 110px;
   display: flex;
   align-items: center;
 }
@@ -580,8 +554,52 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  white-space: nowrap;
+  max-width: 130px;
+  text-align: right;
+  line-height: 1.2;
   font-size: 0.84rem;
+}
+
+/* Choice controls take the whole row so no option is clipped. */
+.param.enum {
+  grid-template-columns: minmax(86px, 118px) minmax(0, 1fr);
+  grid-template-areas:
+    "label control"
+    "extra extra";
+}
+
+.param.enum .param-value {
+  display: none;
+}
+
+.param.enum .segmented {
+  max-width: 100%;
+}
+
+.param.enum .segmented button {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 560px) {
+  .param {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "label value"
+      "control control"
+      "extra extra";
+  }
+
+  .param.enum {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "label"
+      "control"
+      "extra";
+  }
 }
 
 .param-extra {
