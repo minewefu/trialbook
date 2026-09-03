@@ -3,6 +3,7 @@ import { round } from '../../lib/format';
 import {
   drawReadout,
   emptyMessage,
+  fixed,
   inRect,
   lastTime,
   playbackProgress,
@@ -177,19 +178,20 @@ export function PendulumStage({ trial, ghosts, watch, replayNonce }: StageProps)
       ctx.beginPath();
       ctx.arc(sx(tShow), sy(angle), 6, 0, Math.PI * 2);
       ctx.stroke();
+      const width = 230;
       drawReadout(
         ctx,
-        w,
-        h,
-        pointer.x,
-        pointer.y,
+        right.x + right.w - width - 6,
+        right.y + 6,
         [
-          `t = ${round(tShow, 3)} s`,
-          `angle ${round(angle, 4)}°`,
-          `angular speed ${round(omega, 4)} rad/s`,
-          `bob speed ${round(Math.abs(omega) * L, 4)} m/s · height ${round(L * (1 - Math.cos(angle * TO_RAD)), 4)} m`,
+          `t          ${fixed(tShow, 2)} s`,
+          `angle      ${fixed(angle, 1)}°`,
+          `ang. speed ${fixed(omega, 3)} rad/s`,
+          `bob speed  ${fixed(Math.abs(omega) * L, 3)} m/s`,
+          `height     ${fixed(L * (1 - Math.cos(angle * TO_RAD)), 3)} m`,
         ],
         c,
+        width,
       );
     }
     return progress < 1;

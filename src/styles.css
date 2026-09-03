@@ -477,10 +477,27 @@ select {
 
 /* Stage */
 .stage-host {
+  position: relative;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface-2);
   overflow: hidden;
+}
+
+.stage-canvas {
+  touch-action: none;
+}
+
+.stage-controls {
+  position: absolute;
+  top: 24px;
+  right: 10px;
+  display: flex;
+  gap: 6px;
+}
+
+.stage-controls .chip {
+  background: var(--surface);
 }
 
 .stage-canvas {
@@ -516,7 +533,7 @@ select {
 
 .param {
   display: grid;
-  grid-template-columns: minmax(86px, 118px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(86px, 118px) minmax(0, 1fr) 9.5rem;
   grid-template-areas:
     "label control value"
     "extra extra extra";
@@ -548,16 +565,20 @@ select {
   align-items: center;
 }
 
+/* Fixed-width, right-aligned, tabular digits: the sliders line up and never resize while dragging. */
 .param-value {
   grid-area: value;
-  justify-self: end;
-  display: inline-flex;
+  justify-self: stretch;
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
-  max-width: 130px;
   text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
   line-height: 1.2;
   font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Choice controls take the whole row so no option is clipped. */
@@ -582,6 +603,12 @@ select {
   padding: 4px 8px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+@media (max-width: 900px) {
+  .param {
+    grid-template-columns: minmax(86px, 118px) minmax(0, 1fr) 8rem;
+  }
 }
 
 @media (max-width: 560px) {

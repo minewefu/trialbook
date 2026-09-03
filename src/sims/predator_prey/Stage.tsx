@@ -4,6 +4,7 @@ import type { Trial } from '../../store';
 import {
   drawReadout,
   emptyMessage,
+  fixed,
   inRect,
   lastTime,
   nearestPoint,
@@ -214,14 +215,14 @@ export function PredatorPreyStage({ trial, ghosts, watch, replayNonce }: StagePr
       ctx.beginPath();
       ctx.arc(tx(tShow), ty(predNow), 4, 0, Math.PI * 2);
       ctx.fill();
+      const width = 190;
       drawReadout(
         ctx,
-        w,
-        h,
-        pointer.x,
-        pointer.y,
-        [`season ${round(tShow, 3)}`, `prey ${round(preyNow, 4)}`, `predators ${round(predNow, 4)}`],
+        left.x + left.w - width - 6,
+        left.y + 6,
+        [`season    ${fixed(tShow, 2)}`, `prey      ${fixed(preyNow, 2)}`, `predators ${fixed(predNow, 2)}`],
         c,
+        width,
       );
     }
     return progress < 1;

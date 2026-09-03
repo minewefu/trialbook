@@ -123,31 +123,35 @@ export function nearestPoint(
   return best;
 }
 
-/** A small tooltip box next to the pointer, kept inside the canvas. */
-export function drawReadout(ctx: CanvasRenderingContext2D, w: number, h: number, x: number, y: number, lines: string[], c: Colors): void {
+/** Fixed-decimal number for readouts, so the text width stays steady while the pointer moves. */
+export function fixed(value: number, decimals: number): string {
+  return Number.isFinite(value) ? value.toFixed(decimals) : 'n/a';
+}
+
+/**
+ * A readout panel anchored at a fixed corner with a fixed width and monospace digits, so the values
+ * update in place instead of the box chasing the pointer and resizing with every digit.
+ */
+export function drawReadout(ctx: CanvasRenderingContext2D, x: number, y: number, lines: string[], c: Colors, width: number): void {
   ctx.save();
-  ctx.font = `12px ${c.font}`;
+  const mono = cssVar('--mono', 'monospace');
+  ctx.font = `11.5px ${mono}`;
   const pad = 7;
   const lineHeight = 15;
-  const width = Math.max(...lines.map((line) => ctx.measureText(line).width)) + pad * 2;
   const height = lines.length * lineHeight + pad * 2 - 3;
-  let bx = x + 14;
-  let by = y + 14;
-  if (bx + width > w - 4) bx = x - 14 - width;
-  if (by + height > h - 4) by = y - 14 - height;
-  bx = Math.max(4, bx);
-  by = Math.max(4, by);
+  ctx.globalAlpha = 0.96;
   ctx.fillStyle = c.surface;
   ctx.strokeStyle = c.border;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.roundRect(bx, by, width, height, 6);
+  ctx.roundRect(x, y, width, height, 6);
   ctx.fill();
   ctx.stroke();
+  ctx.globalAlpha = 1;
   ctx.fillStyle = c.text;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  lines.forEach((line, i) => ctx.fillText(line, bx + pad, by + pad + i * lineHeight));
+  lines.forEach((line, i) => ctx.fillText(line, x + pad, y + pad + i * lineHeight, width - pad * 2));
   ctx.restore();
 }
 
