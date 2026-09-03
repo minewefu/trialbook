@@ -20,6 +20,12 @@ const PROMPTS: Record<ExperimentId, string[]> = {
     'Write a hypothesis about what happens to the prey minimum when predation doubles, then test it with a sweep and plot the result.',
     'Find the predator death rate that maximises the cycle length within the allowed range, then explain the trend.',
   ],
+  rc_circuit: [
+    'Sweep the resistance from 1 to 50 kΩ in 6 steps and fit a line to the time constant. What does the slope tell you about the capacitance?',
+    'Switch to discharge, run one trial, then fit an exponential to that trial\'s voltage curve and read the time constant from the fit.',
+    'Does the supply voltage change the time constant? Write a hypothesis first, then sweep it from 3 to 24 V and check.',
+    'What did I change on the sliders? Predict the effect on the charging curve, then run a trial to check.',
+  ],
 };
 
 export function PromptIdeas() {

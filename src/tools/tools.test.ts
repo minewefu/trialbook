@@ -66,7 +66,7 @@ describe('tool behaviour', () => {
     expect(r.parameters).toMatchObject({ speed: 30, angle: 45 });
     expect(r.parameter_ranges.angle).toBe('0 to 90 deg');
     expect(r.parameter_ranges.drag).toBe('none | light | heavy');
-    expect(r.experiments).toEqual(['projectile', 'pendulum', 'predator_prey']);
+    expect(r.experiments).toEqual(['projectile', 'pendulum', 'predator_prey', 'rc_circuit']);
     expect(r.measurements).toContain('range_m');
     expect(r.assignment_mode).toBe(false);
     expect(size(r)).toBeLessThan(MAX);
@@ -330,6 +330,43 @@ describe('tool behaviour', () => {
     expect(report.preview).toContain('# Trialbook lab report');
 
     lab.setAssignmentMode(false);
+    useLab.getState().openExperiment('projectile', 'you');
+  });
+
+  it('RC circuit: a resistance sweep fits a line whose slope is the capacitance, and a discharge curve fits an exponential', async () => {
+    const opened = (await runTool('open_experiment', { experiment: 'rc_circuit' })) as Result;
+    expect(opened.ok).toBe(true);
+    expect(Object.keys(opened.parameter_ranges)).toContain('capacitance');
+    expect(size(opened)).toBeLessThan(MAX);
+    await settle();
+    await runTool('set_parameters', { duration: 30 });
+    const sweep = (await runTool('sweep_parameter', { parameter: 'resistance', from: 1, to: 50, steps: 6, watch: false })) as Result;
+    expect(sweep.count).toBe(6);
+    expect(size(sweep)).toBeLessThan(MAX);
+    const line = (await runTool('fit_model', { sweep_id: sweep.sweep_id, y: 'time_constant_s', model: 'linear' })) as Result;
+    expect(line.parameters.b).toBeCloseTo(0.1, 3);
+    expect(line.r2).toBeGreaterThan(0.9999);
+    expect(size(line)).toBeLessThan(MAX);
+
+    const trial = (await runTool('run_trial', { mode: 'discharge', resistance: 10, capacitance: 100, duration: 5 })) as Result;
+    expect(trial.measurements.time_constant_s).toBeCloseTo(1, 3);
+    const curve = (await runTool('fit_model', { trial_id: trial.trial_id, x: 't', y: 'voltage', model: 'exponential' })) as Result;
+    expect(curve.parameters.k).toBeCloseTo(-1, 3);
+    expect(curve.parameters.A).toBeCloseTo(9, 2);
+    expect(curve.equation).toMatch(/^voltage = 9·e\^\(-1·t\)/);
+    expect(curve.reading).toContain('decays');
+    expect(size(curve)).toBeLessThan(MAX);
+    const stored = useLab.getState().charts.find((c) => c.id === curve.chart_id)!;
+    expect(stored.title).toContain(trial.trial_id);
+    expect(stored.points.length).toBeGreaterThan(40);
+    expect(stored.points.length).toBeLessThanOrEqual(82);
+
+    const current = (await runTool('plot_results', { trial_id: trial.trial_id, y: 'current' })) as Result;
+    expect(current.curve_of).toBe(trial.trial_id);
+    expect(current.x).toBe('t');
+    const bad = (await runTool('plot_results', { trial_id: trial.trial_id, y: 'range_m' })) as Result;
+    expect(bad.ok).toBe(false);
+    expect(bad.error).toMatch(/series keys/);
     useLab.getState().openExperiment('projectile', 'you');
   });
 

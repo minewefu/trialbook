@@ -1,7 +1,7 @@
 import { round } from '../lib/format';
 import { mulberry32, perturb, seedFrom, type NoiseSpec } from '../lib/noise';
 
-export type ExperimentId = 'projectile' | 'pendulum' | 'predator_prey';
+export type ExperimentId = 'projectile' | 'pendulum' | 'predator_prey' | 'rc_circuit';
 
 export type ParamValue = number | string;
 export type Params = Record<string, ParamValue>;
@@ -42,6 +42,8 @@ export type ExperimentDef = {
   summary: string;
   /** Keys present on every series point, e.g. t, x, y for a trajectory. */
   seriesKeys: string[];
+  /** Axis labels for series keys, used when a trial's curve is plotted. */
+  seriesLabels?: Record<string, string>;
   params: ParamSpec[];
   measurements: MeasurementSpec[];
   /** Pure and deterministic: runs the simulation headless and returns measurements plus a downsampled series. */

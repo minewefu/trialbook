@@ -6,6 +6,7 @@ export const projectile: ExperimentDef = {
   title: 'Projectile motion',
   summary: 'Launch a ball and measure where it lands. Vary speed, angle, launch height, gravity and air drag.',
   seriesKeys: ['t', 'x', 'y'],
+  seriesLabels: { t: 'Time (s)', x: 'Distance (m)', y: 'Height (m)' },
   params: [
     {
       kind: 'number',

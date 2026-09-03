@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import { PendulumStage } from './pendulum/Stage';
 import { PredatorPreyStage } from './predator_prey/Stage';
 import { ProjectileStage } from './projectile/Stage';
+import { RcStage } from './rc_circuit/Stage';
 import type { StageProps } from './stageKit';
 import type { ExperimentId } from './types';
 
@@ -10,4 +11,5 @@ export const STAGES: Partial<Record<ExperimentId, ComponentType<StageProps>>> = 
   projectile: ProjectileStage,
   pendulum: PendulumStage,
   predator_prey: PredatorPreyStage,
+  rc_circuit: RcStage,
 };

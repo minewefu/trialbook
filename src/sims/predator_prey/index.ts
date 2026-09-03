@@ -6,6 +6,7 @@ export const predatorPrey: ExperimentDef = {
   title: 'Predator and prey',
   summary: 'Watch two populations chase each other through the Lotka–Volterra cycle. Vary growth, predation, efficiency, death rate and the starting numbers.',
   seriesKeys: ['t', 'prey', 'predators'],
+  seriesLabels: { t: 'Season', prey: 'Prey (animals)', predators: 'Predators (animals)' },
   params: [
     {
       kind: 'number',

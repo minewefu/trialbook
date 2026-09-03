@@ -9,6 +9,7 @@ import { NOTE_KINDS, personHypotheses, useLab, type Chart, type ChartPoint, type
 const EXPERIMENT_IDS = EXPERIMENT_ORDER.map((e) => e.id);
 const MAX_CHANGES_REPORTED = 8;
 const STATE_BUDGET = 1300;
+const SERIES_CHART_POINTS = 80;
 
 export const objectSchema = (properties: Record<string, unknown>, required: string[] = []) => ({
   type: 'object',
@@ -116,6 +117,7 @@ function findChart(id: string): Chart {
 type PointSet = {
   def: ExperimentDef;
   sweep?: Sweep;
+  trialId?: string;
   xKey: string;
   xLabel: string;
   yKey: string;
@@ -124,17 +126,54 @@ type PointSet = {
   skipped: number;
 };
 
+type PointQuery = { sweep_id?: string; trial_ids?: string[]; trial_id?: string; x?: string; y: string };
+
+/** One trial's recorded curve (for example voltage against time), thinned to a chartable number of points. */
+function seriesPoints(trialId: string, x: string | undefined, y: string): PointSet {
+  const s = useLab.getState();
+  const trial = s.trials.find((t) => t.id === trialId);
+  if (!trial) {
+    throw new Error(`Unknown trial "${trialId}". Recent trials: ${s.trials.slice(-5).map((t) => t.id).join(', ') || 'none'}.`);
+  }
+  const def = mustDef(trial.experiment);
+  const xKey = x ?? 't';
+  if (!def.seriesKeys.includes(xKey) || !def.seriesKeys.includes(y)) {
+    throw new Error(`For one trial's curve, x and y must be series keys of ${def.title}: ${def.seriesKeys.join(', ')}.`);
+  }
+  const step = Math.max(1, Math.floor(trial.series.length / SERIES_CHART_POINTS));
+  const points: ChartPoint[] = trial.series
+    .filter((_, i) => i % step === 0 || i === trial.series.length - 1)
+    .map((p) => ({ x: p[xKey], y: p[y], trialId: trial.id }))
+    .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+  if (!points.length) throw new Error(`Trial ${trial.id} has no finite ${y} values to plot.`);
+  if (xKey !== 't') points.sort((a, b) => a.x - b.x);
+  return {
+    def,
+    trialId: trial.id,
+    xKey,
+    xLabel: def.seriesLabels?.[xKey] ?? xKey,
+    yKey: y,
+    yLabel: def.seriesLabels?.[y] ?? y,
+    points,
+    skipped: 0,
+  };
+}
+
 /**
  * Turns trials into chart points: x from a parameter, a measurement or the trial number; y from a
  * measurement. Trials that share the same x (repeats) collapse into one point with mean, sd and n.
+ * With trial_id, returns that trial's recorded curve instead.
  */
-export function collectPoints(input: { sweep_id?: string; trial_ids?: string[]; x?: string; y: string }): PointSet {
+export function collectPoints(input: PointQuery): PointSet {
+  if (input.trial_id) return seriesPoints(input.trial_id, input.x, input.y);
   const s = useLab.getState();
   const id = s.experiment;
   if (!id) throw new Error('Open an experiment first.');
   const def = mustDef(id);
   const ySpec = def.measurements.find((m) => m.key === input.y);
-  if (!ySpec) throw new Error(`y must be one of ${def.measurements.map((m) => m.key).join(', ')}.`);
+  if (!ySpec) {
+    throw new Error(`y must be one of ${def.measurements.map((m) => m.key).join(', ')}, or a series key together with trial_id.`);
+  }
 
   let trials: Trial[];
   let sweep: Sweep | undefined;
@@ -209,6 +248,21 @@ export function collectPoints(input: { sweep_id?: string; trial_ids?: string[]; 
     points,
     skipped: raw.length - usable.length,
   };
+}
+
+function chartFromSet(set: PointSet, title?: string): Chart {
+  const base = `${set.yLabel.replace(/ \(.*\)$/, '')} vs ${set.xLabel}${set.trialId ? ` · ${set.trialId}` : ''}`;
+  return useLab.getState().addChart({
+    title: clip(String(title ?? base), 80),
+    experiment: set.def.id,
+    xKey: set.xKey,
+    xLabel: set.xLabel,
+    yKey: set.yKey,
+    yLabel: set.yLabel,
+    points: set.points,
+    ...(set.sweep ? { sweepId: set.sweep.id } : {}),
+    actor: 'agent',
+  });
 }
 
 const describePoint = (p: ChartPoint) => ({
@@ -336,41 +390,32 @@ export const GLOBAL_TOOLS: ToolDef[] = [
   {
     name: 'plot_results',
     description:
-      'Add a chart to the Results panel. y is a measurement key; x defaults to the swept parameter (for a sweep) or the trial number. Pass a sweep_id or trial_ids, or nothing to plot the latest sweep of the open experiment. Repeated trials at the same x become one point with error bars. Returns the chart id with the minimum and maximum points.',
+      'Add a chart to the Results panel. y is a measurement key; x defaults to the swept parameter (for a sweep) or the trial number. Pass a sweep_id or trial_ids, or nothing for the latest sweep. Pass trial_id to plot one trial\'s recorded curve, with x and y as series keys such as t and voltage. Repeats at the same x become one point with error bars. Returns the chart id and the extreme points.',
     inputSchema: objectSchema(
       {
-        y: { type: 'string', description: 'Measurement key to plot on the y axis, such as range_m.' },
-        x: { type: 'string', description: 'Parameter key, measurement key, or "trial". Defaults to the swept parameter.' },
+        y: { type: 'string', description: 'Measurement key for the y axis, such as range_m; with trial_id, a series key such as voltage.' },
+        x: { type: 'string', description: 'Parameter key, measurement key, or "trial"; with trial_id, a series key (default t).' },
         sweep_id: { type: 'string', description: 'Sweep to plot, such as sweep-3.' },
         trial_ids: { type: 'array', items: { type: 'string' }, maxItems: 50, description: 'Specific trials to plot.' },
+        trial_id: { type: 'string', description: 'Plot this one trial\'s recorded curve instead of trial results.' },
         title: { type: 'string', description: 'Optional chart title, up to 80 characters.' },
       },
       ['y'],
     ),
     example: { y: 'range_m' },
-    execute: async (input: { y: string; x?: string; sweep_id?: string; trial_ids?: string[]; title?: string }) => {
+    execute: async (input: PointQuery & { title?: string }) => {
       const set = collectPoints(input);
-      const title = clip(String(input.title ?? `${set.yLabel.replace(/ \(.*\)$/, '')} vs ${set.xLabel}`), 80);
-      const chart = useLab.getState().addChart({
-        title,
-        experiment: set.def.id,
-        xKey: set.xKey,
-        xLabel: set.xLabel,
-        yKey: set.yKey,
-        yLabel: set.yLabel,
-        points: set.points,
-        ...(set.sweep ? { sweepId: set.sweep.id } : {}),
-        actor: 'agent',
-      });
+      const chart = chartFromSet(set, input.title);
       const yMax = set.points.reduce((best, p) => (p.y > best.y ? p : best), set.points[0]);
       const yMin = set.points.reduce((best, p) => (p.y < best.y ? p : best), set.points[0]);
       const repeated = set.points.some((p) => p.n !== undefined);
       return {
         chart_id: chart.id,
-        title,
+        title: chart.title,
         x: set.xKey,
         y: set.yKey,
         points: set.points.length,
+        ...(set.trialId ? { curve_of: set.trialId } : {}),
         ...(repeated ? { error_bars: 'one standard deviation across repeats' } : {}),
         ...(set.skipped ? { skipped: set.skipped } : {}),
         y_max: describePoint(yMax),
@@ -382,43 +427,29 @@ export const GLOBAL_TOOLS: ToolDef[] = [
   {
     name: 'fit_model',
     description:
-      'Fit a model to sweep results and draw it over the chart: linear, quadratic, power law (y = A·x^p) or exponential, or auto to pick the best. Pass a chart_id to fit an existing chart, or a sweep_id or trial_ids with x and y to build one. Returns the equation with the real variable names, R², RMSE, the largest residual and a plain-language reading.',
+      'Fit a model to a chart and draw it: linear, quadratic, power law (y = A·x^p) or exponential, or auto to pick the best. Pass a chart_id to fit an existing chart; a sweep_id or trial_ids with x and y to build one; or trial_id with series keys (x t, y voltage) to fit one trial\'s curve. Returns the equation in the real variable names, R², RMSE, the largest residual and a plain-language reading.',
     inputSchema: objectSchema({
       chart_id: { type: 'string', description: 'Fit the points of an existing chart, such as chart-2.' },
       sweep_id: { type: 'string', description: 'Sweep to fit, such as sweep-3, when no chart exists yet.' },
       trial_ids: { type: 'array', items: { type: 'string' }, maxItems: 50, description: 'Specific trials to fit.' },
-      x: { type: 'string', description: 'Parameter or measurement key for x. Defaults to the swept parameter.' },
-      y: { type: 'string', description: 'Measurement key for y. Required unless chart_id is given.' },
+      trial_id: { type: 'string', description: 'Fit one trial\'s recorded curve; x and y are then series keys.' },
+      x: { type: 'string', description: 'Parameter or measurement key for x; a series key with trial_id. Defaults to the swept parameter or t.' },
+      y: { type: 'string', description: 'Measurement key for y, or a series key with trial_id. Required unless chart_id is given.' },
       model: { type: 'string', enum: ['auto', ...FIT_MODELS], description: 'Which model to fit. Default auto.' },
     }),
     example: { model: 'power' },
-    execute: async (input: { chart_id?: string; sweep_id?: string; trial_ids?: string[]; x?: string; y?: string; model?: string }) => {
+    execute: async (input: Partial<PointQuery> & { chart_id?: string; model?: string }) => {
       const s = useLab.getState();
       let chart: Chart;
       if (input.chart_id) {
         chart = findChart(input.chart_id);
       } else {
-        if (!input.y) throw new Error('Give y (a measurement key), or a chart_id to fit an existing chart.');
-        const latestChart =
-          !input.sweep_id && !input.trial_ids?.length
-            ? [...s.charts].reverse().find((c) => c.experiment === s.experiment && c.yKey === input.y && (!input.x || c.xKey === input.x))
-            : undefined;
-        if (latestChart) {
-          chart = latestChart;
-        } else {
-          const set = collectPoints({ sweep_id: input.sweep_id, trial_ids: input.trial_ids, x: input.x, y: input.y });
-          chart = s.addChart({
-            title: clip(`${set.yLabel.replace(/ \(.*\)$/, '')} vs ${set.xLabel}`, 80),
-            experiment: set.def.id,
-            xKey: set.xKey,
-            xLabel: set.xLabel,
-            yKey: set.yKey,
-            yLabel: set.yLabel,
-            points: set.points,
-            ...(set.sweep ? { sweepId: set.sweep.id } : {}),
-            actor: 'agent',
-          });
-        }
+        if (!input.y) throw new Error('Give y (a measurement key, or a series key with trial_id), or a chart_id to fit an existing chart.');
+        const fresh = Boolean(input.sweep_id || input.trial_ids?.length || input.trial_id);
+        const latestChart = fresh
+          ? undefined
+          : [...s.charts].reverse().find((c) => c.experiment === s.experiment && c.yKey === input.y && (!input.x || c.xKey === input.x));
+        chart = latestChart ?? chartFromSet(collectPoints({ sweep_id: input.sweep_id, trial_ids: input.trial_ids, trial_id: input.trial_id, x: input.x, y: input.y }));
       }
       if (chart.xKey === 'trial') throw new Error('This chart has the trial number on x. Plot against a parameter or a measurement first, then fit.');
       const model = (input.model ?? 'auto') as FitModel | 'auto';

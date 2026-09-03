@@ -16,7 +16,8 @@ student accepts, edits or rejects.
 Built for the [OpenAI WebMCP Challenge](https://webmcp.devpost.com/) (August 25 to September 3, 2026).
 All code in this repository was written during the submission period.
 
-> **Status: feature complete.** Three experiments with tested physics, fourteen WebMCP tools, fitting,
+> **Status: feature complete.** Four experiments with tested physics (projectile motion, pendulum, predator
+> and prey, RC circuit), fourteen WebMCP tools, fitting of sweep results and of single-trial curves,
 > optimisation, measurement error with error bars, assignment mode, and a generated tools reference.
 > Remaining before submission: screenshots and the demo video.
 
@@ -48,6 +49,7 @@ from a plain conversation.
 | Projectile motion | speed, angle, launch height, gravity, air drag | range, flight time, max height, impact speed | closed form without drag; semi-implicit Euler with quadratic drag, tested against the closed form within 0.5% |
 | Pendulum | length, release angle, gravity, damping | period, small-angle period, deviation, peak speed, decay time | RK4 on the full nonlinear equation, tested against the exact elliptic-integral period within 0.5% |
 | Predator and prey | growth, predation, efficiency, death rate, starting numbers, duration | population extremes, cycle length, time averages | RK4 on Lotka–Volterra, tested for conservation of the invariant and the time-average theorem |
+| RC circuit | resistance, capacitance, supply voltage, charge or discharge, duration | time constant from the 63% crossing, R·C, half-time, final voltage, initial current, energy | exact first-order solution; the discharge curve fits an exponential with k = −1/τ, and a resistance sweep fits a line whose slope is C |
 
 ## Try it with an agent
 

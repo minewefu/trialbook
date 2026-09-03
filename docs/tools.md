@@ -27,7 +27,7 @@ Read the current state of the lab: the open experiment with its parameters, rang
 
 *makes changes*
 
-Open an experiment (projectile: Projectile motion; pendulum: Pendulum; predator_prey: Predator and prey) so its sliders and tools become active. The experiment tools always act on the open experiment. Returns its parameters, ranges and guidance.
+Open an experiment (projectile: Projectile motion; pendulum: Pendulum; predator_prey: Predator and prey; rc_circuit: RC circuit) so its sliders and tools become active. The experiment tools always act on the open experiment. Returns its parameters, ranges and guidance.
 
 ```json
 {
@@ -38,7 +38,8 @@ Open an experiment (projectile: Projectile motion; pendulum: Pendulum; predator_
       "enum": [
         "projectile",
         "pendulum",
-        "predator_prey"
+        "predator_prey",
+        "rc_circuit"
       ],
       "description": "Experiment id to open."
     }
@@ -92,7 +93,7 @@ Read stored trials with their parameters and measurements. Pass a sweep_id to ge
 
 *makes changes*
 
-Add a chart to the Results panel. y is a measurement key; x defaults to the swept parameter (for a sweep) or the trial number. Pass a sweep_id or trial_ids, or nothing to plot the latest sweep of the open experiment. Repeated trials at the same x become one point with error bars. Returns the chart id with the minimum and maximum points.
+Add a chart to the Results panel. y is a measurement key; x defaults to the swept parameter (for a sweep) or the trial number. Pass a sweep_id or trial_ids, or nothing for the latest sweep. Pass trial_id to plot one trial's recorded curve, with x and y as series keys such as t and voltage. Repeats at the same x become one point with error bars. Returns the chart id and the extreme points.
 
 ```json
 {
@@ -100,11 +101,11 @@ Add a chart to the Results panel. y is a measurement key; x defaults to the swep
   "properties": {
     "y": {
       "type": "string",
-      "description": "Measurement key to plot on the y axis, such as range_m."
+      "description": "Measurement key for the y axis, such as range_m; with trial_id, a series key such as voltage."
     },
     "x": {
       "type": "string",
-      "description": "Parameter key, measurement key, or \"trial\". Defaults to the swept parameter."
+      "description": "Parameter key, measurement key, or \"trial\"; with trial_id, a series key (default t)."
     },
     "sweep_id": {
       "type": "string",
@@ -117,6 +118,10 @@ Add a chart to the Results panel. y is a measurement key; x defaults to the swep
       },
       "maxItems": 50,
       "description": "Specific trials to plot."
+    },
+    "trial_id": {
+      "type": "string",
+      "description": "Plot this one trial's recorded curve instead of trial results."
     },
     "title": {
       "type": "string",
@@ -134,7 +139,7 @@ Add a chart to the Results panel. y is a measurement key; x defaults to the swep
 
 *makes changes*
 
-Fit a model to sweep results and draw it over the chart: linear, quadratic, power law (y = A·x^p) or exponential, or auto to pick the best. Pass a chart_id to fit an existing chart, or a sweep_id or trial_ids with x and y to build one. Returns the equation with the real variable names, R², RMSE, the largest residual and a plain-language reading.
+Fit a model to a chart and draw it: linear, quadratic, power law (y = A·x^p) or exponential, or auto to pick the best. Pass a chart_id to fit an existing chart; a sweep_id or trial_ids with x and y to build one; or trial_id with series keys (x t, y voltage) to fit one trial's curve. Returns the equation in the real variable names, R², RMSE, the largest residual and a plain-language reading.
 
 ```json
 {
@@ -156,13 +161,17 @@ Fit a model to sweep results and draw it over the chart: linear, quadratic, powe
       "maxItems": 50,
       "description": "Specific trials to fit."
     },
+    "trial_id": {
+      "type": "string",
+      "description": "Fit one trial's recorded curve; x and y are then series keys."
+    },
     "x": {
       "type": "string",
-      "description": "Parameter or measurement key for x. Defaults to the swept parameter."
+      "description": "Parameter or measurement key for x; a series key with trial_id. Defaults to the swept parameter or t."
     },
     "y": {
       "type": "string",
-      "description": "Measurement key for y. Required unless chart_id is given."
+      "description": "Measurement key for y, or a series key with trial_id. Required unless chart_id is given."
     },
     "model": {
       "type": "string",
@@ -1180,6 +1189,305 @@ Search for the value of one Predator and prey parameter that maximises or minimi
 *makes changes*
 
 Reset every Predator and prey parameter to its default value. Trials, charts and notebook entries are kept.
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}
+```
+
+## RC circuit tools (6)
+
+Charge or discharge a capacitor through a resistor and time it. Vary resistance, capacitance, supply voltage and duration.
+
+### `set_parameters`
+
+*makes changes*
+
+Change RC circuit parameters without running anything; the sliders update on screen. Parameters: resistance (0.1 to 100 kΩ); capacitance (1 to 1000 µF); supply_voltage (1 to 24 V); mode (one of charge, discharge); duration (0.5 to 60 s).
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resistance": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 100,
+      "description": "Series resistance in kilo-ohms, 0.1 to 100. Unit: kΩ."
+    },
+    "capacitance": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "Capacitance in microfarads, 1 to 1000. Unit: µF."
+    },
+    "supply_voltage": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 24,
+      "description": "Battery voltage in volts, 1 to 24. When discharging, the capacitor starts at this voltage. Unit: V."
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "charge",
+        "discharge"
+      ],
+      "description": "charge: connect the empty capacitor to the battery. discharge: let the full capacitor drain through the resistor."
+    },
+    "duration": {
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 60,
+      "description": "How long to record, in seconds, 0.5 to 60. Unit: s."
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+### `run_trial`
+
+*makes changes*
+
+Run the RC circuit experiment once and measure it. Uses the current parameters; any parameter you pass is applied first and stays set. Returns time_constant_s, rc_product_s, half_time_s, final_voltage_v, initial_current_ma, energy_stored_mj. The person watches the trial on screen.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "resistance": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 100,
+      "description": "Series resistance in kilo-ohms, 0.1 to 100. Unit: kΩ."
+    },
+    "capacitance": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "Capacitance in microfarads, 1 to 1000. Unit: µF."
+    },
+    "supply_voltage": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 24,
+      "description": "Battery voltage in volts, 1 to 24. When discharging, the capacitor starts at this voltage. Unit: V."
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "charge",
+        "discharge"
+      ],
+      "description": "charge: connect the empty capacitor to the battery. discharge: let the full capacitor drain through the resistor."
+    },
+    "duration": {
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 60,
+      "description": "How long to record, in seconds, 0.5 to 60. Unit: s."
+    },
+    "label": {
+      "type": "string",
+      "maxLength": 60,
+      "description": "Optional short label for this trial."
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+### `sweep_parameter`
+
+*makes changes*
+
+Run a series of RC circuit trials while one parameter changes and the others stay at their current values. Give from, to and steps for an even spread, or an explicit values list (up to 50 trials). Add repeats (with measurement error on) to get error bars. The person watches a progress bar and can cancel. Returns per-value measurements plus the minimum and maximum of each measurement.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "parameter": {
+      "type": "string",
+      "enum": [
+        "resistance",
+        "capacitance",
+        "supply_voltage",
+        "mode",
+        "duration"
+      ],
+      "description": "Which parameter to vary."
+    },
+    "from": {
+      "type": "number",
+      "description": "First value, for numeric parameters."
+    },
+    "to": {
+      "type": "number",
+      "description": "Last value, for numeric parameters."
+    },
+    "steps": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 50,
+      "description": "How many evenly spaced values from first to last, both ends included. Default 10."
+    },
+    "values": {
+      "type": "array",
+      "items": {
+        "type": [
+          "number",
+          "string"
+        ]
+      },
+      "maxItems": 50,
+      "description": "Explicit list of values to try instead of from, to and steps."
+    },
+    "repeats": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Trials per value, for error bars. Needs measurement error on. Default 1."
+    },
+    "noise": {
+      "type": "boolean",
+      "description": "Apply synthetic measurement error to these readings. Default: the lab setting."
+    },
+    "watch": {
+      "type": "boolean",
+      "description": "Animate each trial briefly so the person can watch. Default true."
+    },
+    "label": {
+      "type": "string",
+      "maxLength": 60,
+      "description": "Optional short label for the sweep."
+    }
+  },
+  "required": [
+    "parameter"
+  ],
+  "additionalProperties": false
+}
+```
+
+### `run_repeats`
+
+*makes changes*
+
+Run the RC circuit experiment several times at the current parameters with synthetic measurement error, and return the mean, standard deviation and standard error of every measurement. Use it to quantify uncertainty before comparing two settings.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "n": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 20,
+      "description": "How many repeats, 2 to 20."
+    },
+    "noise": {
+      "type": "boolean",
+      "description": "Apply synthetic measurement error. Default true; false makes every repeat identical."
+    },
+    "watch": {
+      "type": "boolean",
+      "description": "Animate each repeat briefly. Default false."
+    },
+    "label": {
+      "type": "string",
+      "maxLength": 60,
+      "description": "Optional short label."
+    }
+  },
+  "required": [
+    "n"
+  ],
+  "additionalProperties": false
+}
+```
+
+### `optimize_parameter`
+
+*makes changes*
+
+Search for the value of one RC circuit parameter that maximises or minimises a measurement, using golden-section search over a range (about 20 trials for 1% of the range). Assumes a single peak or valley; run a coarse sweep_parameter first if unsure. Recorded as a sweep so plot_results can show every point tried.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "parameter": {
+      "type": "string",
+      "enum": [
+        "resistance",
+        "capacitance",
+        "supply_voltage",
+        "duration"
+      ],
+      "description": "Numeric parameter to search."
+    },
+    "measurement": {
+      "type": "string",
+      "enum": [
+        "time_constant_s",
+        "rc_product_s",
+        "half_time_s",
+        "final_voltage_v",
+        "initial_current_ma",
+        "energy_stored_mj"
+      ],
+      "description": "Measurement to optimise."
+    },
+    "goal": {
+      "type": "string",
+      "enum": [
+        "max",
+        "min"
+      ],
+      "description": "Maximise or minimise the measurement."
+    },
+    "from": {
+      "type": "number",
+      "description": "Lower end of the search range. Default: the parameter minimum."
+    },
+    "to": {
+      "type": "number",
+      "description": "Upper end of the search range. Default: the parameter maximum."
+    },
+    "tolerance": {
+      "type": "number",
+      "description": "Stop when the bracket is this narrow. Default: 1% of the range."
+    },
+    "max_trials": {
+      "type": "integer",
+      "minimum": 4,
+      "maximum": 30,
+      "description": "Trial budget, 4 to 30. Default 20."
+    },
+    "watch": {
+      "type": "boolean",
+      "description": "Pause briefly after each trial so the person can watch. Default true."
+    }
+  },
+  "required": [
+    "parameter",
+    "measurement",
+    "goal"
+  ],
+  "additionalProperties": false
+}
+```
+
+### `reset_experiment`
+
+*makes changes*
+
+Reset every RC circuit parameter to its default value. Trials, charts and notebook entries are kept.
 
 ```json
 {

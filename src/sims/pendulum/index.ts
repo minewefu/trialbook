@@ -6,6 +6,7 @@ export const pendulum: ExperimentDef = {
   title: 'Pendulum',
   summary: 'Release a pendulum and time its swing. Vary length, amplitude, gravity and damping, and compare with the small-angle formula.',
   seriesKeys: ['t', 'angle', 'omega'],
+  seriesLabels: { t: 'Time (s)', angle: 'Angle (deg)', omega: 'Angular speed (rad/s)' },
   params: [
     {
       kind: 'number',
