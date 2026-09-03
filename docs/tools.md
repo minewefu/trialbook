@@ -193,7 +193,7 @@ Fit a model to a chart and draw it: linear, quadratic, power law (y = A·x^p) or
 
 *makes changes*
 
-Write in the shared lab notebook under your own name. Use kind "hypothesis" before testing an idea, "observation" for what a trial or sweep showed, "conclusion" for the answer, and "note" for anything else. In assignment mode a conclusion becomes a proposal the person accepts, edits or rejects. The entry records the open experiment and its parameters.
+Write in the shared lab notebook under your own name; findings belong here, not only in chat. Use kind "hypothesis" before testing an idea, "observation" for what a trial or sweep showed, "conclusion" for the answer, and "note" for anything else. In assignment mode a conclusion becomes a proposal the person accepts, edits or rejects. The entry records the open experiment and its parameters.
 
 ```json
 {
