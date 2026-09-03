@@ -473,14 +473,16 @@ export const GLOBAL_TOOLS: ToolDef[] = [
         chart_id: chart.id,
         ...summary,
         ...(candidates ? { candidates_r2: candidates } : {}),
-        hint: 'The fitted curve is drawn on the chart. Record the law and its R² with notebook_add_entry.',
+        hint: useLab.getState().assignmentMode
+          ? 'The fitted curve is drawn on the chart. Assignment mode: record the law and its R² with notebook_add_entry (kind "conclusion") so the person can accept, edit or reject it.'
+          : 'The fitted curve is drawn on the chart. Record the law and its R² with notebook_add_entry so it lives in the notebook, not only in chat.',
       };
     },
   },
   {
     name: 'notebook_add_entry',
     description:
-      'Write in the shared lab notebook under your own name. Use kind "hypothesis" before testing an idea, "observation" for what a trial or sweep showed, "conclusion" for the answer, and "note" for anything else. In assignment mode a conclusion becomes a proposal the person accepts, edits or rejects. The entry records the open experiment and its parameters.',
+      'Write in the shared lab notebook under your own name; findings belong here, not only in chat. Use kind "hypothesis" before testing an idea, "observation" for what a trial or sweep showed, "conclusion" for the answer, and "note" for anything else. In assignment mode a conclusion becomes a proposal the person accepts, edits or rejects. The entry records the open experiment and its parameters.',
     inputSchema: objectSchema(
       {
         kind: { type: 'string', enum: [...NOTE_KINDS], description: 'Entry type.' },

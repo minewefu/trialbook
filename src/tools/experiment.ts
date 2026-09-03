@@ -43,6 +43,13 @@ function compose(parts: string[], limit = 500): string {
   return out;
 }
 
+/** Every batch result ends by steering the agent to the notebook, most firmly in assignment mode. */
+export function recordHint(next: string): string {
+  return useLab.getState().assignmentMode
+    ? `${next} Assignment mode: finish by recording your conclusion with notebook_add_entry (kind "conclusion") so the person can accept, edit or reject it; a conclusion given only in chat does not count.`
+    : `${next} Then record the conclusion with notebook_add_entry so it lives in the shared notebook, not only in chat.`;
+}
+
 function statistics(def: ExperimentDef, trials: Trial[]) {
   const stats: Record<string, { mean: number | null; sd: number | null; sem: number | null }> = {};
   for (const m of def.measurements) {
@@ -221,7 +228,9 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
           summary,
           rows: rows.slice(0, n),
           ...(rows.length > n ? { more_rows: `get_results with sweep_id ${sweep.id}` } : {}),
-          hint: `Call plot_results with sweep_id "${sweep.id}" and a measurement key to chart it${repeats > 1 ? ' with error bars' : ''}, fit_model to find the law, then notebook_add_entry to record the conclusion.`,
+          hint: recordHint(
+            `Call plot_results with sweep_id "${sweep.id}" and a measurement key to chart it${repeats > 1 ? ' with error bars' : ''}, and fit_model to find the law.`,
+          ),
         });
         return fitToBudget(build, Math.min(rows.length, MAX_SWEEP_ROWS), 1350, Math.min(rows.length, 2)).value;
       },
@@ -261,7 +270,7 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
           parameters: s.paramsFor(d.id),
           statistics: statistics(d, trials),
           trial_ids: trials.length > 2 ? [trials[0].id, `… ${trials.length - 2} more`, trials[trials.length - 1].id] : trials.map((t) => t.id),
-          hint: 'Report a value as mean ± standard error. Two settings differ meaningfully when their means are several standard errors apart.',
+          hint: recordHint('Report each value as mean ± standard error; two settings differ meaningfully when their means are several standard errors apart.'),
         };
       },
     },
@@ -332,7 +341,7 @@ export function experimentTools(def: ExperimentDef): ToolDef[] {
             ? { at_bound: result.atBound, note: `The best value sits at the ${result.atBound} end of the range, so the true optimum may lie outside it or the response is monotonic.` }
             : {}),
           caveat: 'Golden-section search assumes one peak or valley in the range.',
-          hint: `plot_results with sweep_id "${result.sweep.id}" shows every point tried; record the optimum with notebook_add_entry.`,
+          hint: recordHint(`plot_results with sweep_id "${result.sweep.id}" shows every point tried.`),
         };
       },
     },

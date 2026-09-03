@@ -98,6 +98,15 @@ export function Notebook() {
   );
 }
 
+/** Time for today's entries; date and time for older ones, so yesterday's 07:00 cannot look newer than today's 06:50. */
+function whenLabel(ts: number): string {
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return sameDay ? time : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
+}
+
 function statusBadge(entry: NotebookEntry) {
   if (!entry.status) return null;
   const label = entry.status === 'pending' ? 'proposed' : entry.status === 'accepted' ? (entry.edited ? 'accepted, edited' : 'accepted') : 'rejected';
@@ -129,7 +138,7 @@ function NoteItem({
         <span className={`badge badge-kind kind-${entry.kind}`}>{entry.kind}</span>
         {statusBadge(entry)}
         <span className="muted small">
-          {new Date(entry.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {whenLabel(entry.ts)}
           {entry.edited && !entry.status ? ' · edited' : ''}
         </span>
         <span className="spacer" />
